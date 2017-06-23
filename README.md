@@ -1,4 +1,4 @@
 # TSYSEQ
-teensy step sequencer
+teensy based step sequencer, with margin/rotation logic and clock divider
 
-## work in progress .. unstable, not working . not finished .
+## work in progress .. unstable, subject to change.
