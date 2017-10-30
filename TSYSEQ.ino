@@ -93,7 +93,7 @@ int devisionValue;
 
 // internal clock
 int tempoPin = A4;
-int clockbpmtime;
+unsigned int clockbpmtime;
 
 // CV control
 int cvValuePotPin = A5;
@@ -174,10 +174,10 @@ void loop() {
     // internal clock inits
     elapsedMicros clocktime;
 
-    //awesome scope
+    //quick scope
     while (1) {
         clockbpmtime = map(analogRead(tempoPin), 0 ,1023, 10000, 1000000);
-        //internal clock
+        //internal clock hack
         if (clocktime >= clockbpmtime) {
             digitalWrite(tempoled, HIGH);
             digitalWrite(tempoOut, HIGH);
