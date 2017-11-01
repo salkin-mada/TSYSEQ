@@ -52,14 +52,15 @@ AudioConnection          patchCord25(mixer7, 0, dacs1, 0);
 AudioConnection          patchCord26(mixer8, 0, dacs1, 1);
 // GUItool: end automatically generated code
 
-
 int randomFreq; // ahh so lazy
 int randomLength; // doubleble lazyzy
 int randomSecondMix; //muhaha
 int randomPitchMod; //aargahg lazlazlazzy
 
-//const unsigned int drum[] = {1,2,3,4,5,6,7,8}; // drums
-/// hvordadn gør man dette egentlig?
+// const char * <-- pointer 
+//const char* drums[8] = {"drum1", "drum2", "drum3", "drum4", "drum5", "drum6", "drum7", "drum8"};
+const char *drums[8] = {"drum1", "drum2", "drum3", "drum4", "drum5", "drum6", "drum7", "drum8"};
+//auto drum = AudioSynthSimpleDrum();
 
 // seq stuff
 //////////////////
@@ -68,7 +69,6 @@ const unsigned int leds[] = {5, 6, 7, 8, 9, 10, 11, 12}; // leds indicating seq 
 const unsigned int tempoled = 13;
 const unsigned int tempoOut = 23;
 
-
 //switch
 const unsigned int switchUp = 0;
 const unsigned int switchDown = 1;
@@ -76,7 +76,7 @@ int switchDownTrig;
 int switchUpTrig;
 
 int gateNr = 0; //sequencer inits
-const unsigned int gateNrMap[] = {0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7}; // translation map
+const unsigned int gateNrMap[] = {0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7}; // translation map for maximum 16th devisions
 
 // control definitions
 // seq length and offset
@@ -112,11 +112,11 @@ void irqClock(){
 }
 
 void setup() {
-    //Serial.begin(9600);
-
+    Serial.begin(9600);
+    
     AudioMemory(120);
-    analogReference(INTERNAL);
-
+    analogReference(EXTERNAL); // used INTERNAL but now EXT, will be adding some noise but quick fix for proper analog readings
+    
     // reverb in
     mixer1.gain(0, 0.3);
     mixer1.gain(1, 0.3);
@@ -129,7 +129,7 @@ void setup() {
     //reverb mix l og r - wet
     mixer3.gain(0, 0.5);
     mixer5.gain(0, 0.5);
-
+    
     // dry mix
     mixer3.gain(1, 2.0);
     mixer5.gain(1, 0.3);
@@ -139,44 +139,71 @@ void setup() {
     mixer5.gain(3, 0.6);
     mixer4.gain(0, 0.1);
     mixer6.gain(0, 0.3);
-
+    
     // end l-r mix (direct)
     mixer7.gain(0, 1);
     mixer7.gain(1, 1);
     mixer8.gain(0, 1);
     mixer8.gain(1, 1);
-
+    
     reverb1.reverbTime(1);
     reverb2.reverbTime(1);
-
+    
     // seq stuff
     pinMode(pinClock, INPUT);
     attachInterrupt(digitalPinToInterrupt(pinClock), irqClock, RISING);
-
+    
     pinMode(tempoPin, INPUT);
     pinMode(tempoled, OUTPUT);
     pinMode(tempoOut, OUTPUT);
-
+    
     for (int i = 0; i < 8; ++i) {
         pinMode(leds[i], OUTPUT);
     }
 }
 
-void loop() {
+void handleNoteOn(unsigned int i) {
+    if (i == 0) {
+        drum1.noteOn();
+    }
+    if (i == 1) {
+        drum2.noteOn();
+    }
+    if (i == 2) {
+        drum3.noteOn();
+    }
+    if (i == 3) {
+        drum4.noteOn();
+    }
+    if (i == 4) {
+        drum5.noteOn();
+    }
+    if (i == 5) {
+        drum6.noteOn();
+    }
+    if (i == 6) {
+        drum7.noteOn();
+    }
+    if (i == 7) {
+        drum8.noteOn();
+    } 
+}
 
+void loop() {
+    
     //tracker inits
     unsigned int t1 = 250000;
     elapsedMicros microtime;
     elapsedMicros microbeattime = 10000;
-    //elapsedMicros debouncer = 0;
+    // elapsedMicros debouncer = 0;
     bool resettracker = true;
-
+    
     // internal clock inits
     elapsedMicros clocktime;
-
+    
     //quick scope
     while (1) {
-        clockbpmtime = map(analogRead(tempoPin), 0 ,1023, 10000, 1000000);
+        clockbpmtime = map(analogRead(tempoPin), 0 ,1023, 1000000, 10000);
         //internal clock hack
         if (clocktime >= clockbpmtime) {
             digitalWrite(tempoled, HIGH);
@@ -186,132 +213,143 @@ void loop() {
             digitalWrite(tempoOut, LOW);
             clocktime = 0;
         }
-
-
+        
+        
         //seq controls
         seqStartValue = analogRead(seqStartPotPin);
         seqEndValue = analogRead(seqEndPotPin);
         seqOffsetValue = analogRead(seqOffsetPin);
         devisionValue = analogRead(devisionPot);
+        // Serial.print("seqStartValue: ");
+        // Serial.println(seqStartValue);
+        // Serial.print("seqEndValue: ");
+        // Serial.println(seqEndValue);
+        // Serial.print("seqOffsetValue: ");
+        // Serial.println(seqOffsetValue);
+        // Serial.print("devisionValue: ");
+        // Serial.println(devisionValue);
+        
         //cv control
-        cvOutValue = analogRead(cvValuePotPin);
-        cvAssignDestinationStep = digitalRead(cvAssignDestinationStepButtonPin);
+        //cvOutValue = analogRead(cvValuePotPin);
+        //cvOutValue = map(cvOutValue, 0, 1023, 0, 1000); // value til cvOut - dac A14 - skal repræsenterer DC 0-3.3V (0-10V)?
+        //cvAssignDestinationStep = digitalRead(cvAssignDestinationStepButtonPin);
+        
         //control scaling
         seqStartValue = map(seqStartValue, 0, 1010, 0, 7);
         seqEndValue = map(seqEndValue, 0, 850, 0, 7);
         seqOffsetValue = map(seqOffsetValue, 0, 1000, 0, 7);
         devisionValue = map(devisionValue, 0, 1000, 1, 16); // max 16-dele , kan være højere.
         //- kan den laveste devisions værdi være 0.5 ?? aka der skal 2 ticks til et step i sequencen, etc .
-        cvOutValue = map(cvOutValue, 0, 1023, 0, 1000); // value til cvOut - dac A14 - skal repræsenterer DC 0-3.3V (0-10V)?
-
+        
         // få offset regnet med i sequence længden (seqStartValue+seqEndValue) ?
         seqStartValue = seqStartValue+seqOffsetValue;
         seqEndValue = seqEndValue+seqOffsetValue;
-
+        
         // control af fraction . det funker men der kunne godt lige optimeres
-        //på matematikken så den arbejder efter at det er en 8 step seq
+        // på matematikken så den arbejder efter at det er en 8 step seq
         float fraction = 1.0/devisionValue;
-
-
+        
+        
         //tracker
         if (flag /*&& (debouncer > debouncetime)*/) {
-
+            
             t1 = (float(microtime) * fraction);
             microtime = 0;
             microbeattime = 0;
             flag = false;
             resettracker = true;
-
+            
             //extended "sync" part of tracking
             gateNr = seqStartValue;
-
-            // fraction skal bruges i en funktion sådan at det kan
-            //kontrolleres hvor ofte sequenceren sætter seqStartValue til gateNr
+            
+            // fraction kan bruges i en funktion sådan at det kan
+            // kontrolleres hvor ofte sequenceren sætter seqStartValue til gateNr
+            // men der bliver jo tænkt lidt anderldes om dette i seq delen nedenunder .
+            // if gate er større end endvalue set gate til seqstartvalue
         }
-
+        
         //sequencer
         if (microbeattime >= t1 || resettracker) {
             //length of seq
             if(gateNr >= seqEndValue) {
                 gateNr = seqStartValue;
             }
-
-            randomFreq = random(10, 2000);
+            
+            randomFreq = random(0, 20);
             randomLength = random(20, 100);
             randomSecondMix = random(0, 100);
             randomPitchMod = random(0, 100);
-
+            
+            // setting for different drums
             if(gateNrMap[gateNr] == 0){
                 drum1.frequency(70);
                 drum1.length(randomLength*10);
                 drum1.secondMix(randomSecondMix/100);
                 drum1.pitchMod(0.6);
-                drum1.noteOn();
             }
             if(gateNrMap[gateNr] == 1){
-                drum2.frequency(randomFreq/2+1000);
+                drum2.frequency(1000+randomFreq);
                 drum2.length(randomLength/6);
-                drum2.secondMix(randomSecondMix/100);
-                drum2.pitchMod(randomPitchMod/100);
-                drum2.noteOn();
+                drum2.secondMix(0);
+                drum2.pitchMod(0.9);
             }
             if(gateNrMap[gateNr] == 2){
-                drum3.frequency(randomFreq);
+                drum3.frequency(randomFreq*200);
                 drum3.length(randomLength/2);
-                drum3.secondMix(randomSecondMix/100);
-                drum3.pitchMod(randomPitchMod/100);
-                drum3.noteOn();
-
+                drum3.secondMix(0);
+                drum3.pitchMod(0.5);
             }
             if(gateNrMap[gateNr] == 3){
                 drum4.frequency(5000);
                 drum4.length(randomLength/3);
-                drum4.secondMix(randomSecondMix/100);
-                drum4.pitchMod(randomPitchMod/100);
-                drum4.noteOn();
-
+                drum4.secondMix(0);
+                drum4.pitchMod(0.45);
             }
             if(gateNrMap[gateNr] == 4){
-                drum5.frequency(150+random(20));
+                drum5.frequency(150+randomFreq);
                 drum5.length(randomLength*2);
                 drum5.secondMix(0);
                 drum5.pitchMod(0.5);
-                drum5.noteOn();
-
             }
             if(gateNrMap[gateNr] == 5){
                 drum6.frequency(120);
                 drum6.length(randomLength/2);
                 drum6.secondMix(randomSecondMix/100);
                 drum6.pitchMod(0.7);
-                drum6.noteOn();
-
             }
             if(gateNrMap[gateNr] == 6){
-                drum7.frequency(randomFreq+9000);
+                drum7.frequency(9000+randomFreq);
                 drum7.length(randomLength/2);
                 drum7.secondMix(randomSecondMix/100);
-                drum7.pitchMod(0.8);
-                drum7.noteOn();
-
+                drum7.pitchMod(0.2);
             }
             if(gateNrMap[gateNr] == 7){
                 drum8.frequency(1900);
                 drum8.length(randomLength/4);
                 drum8.secondMix(randomSecondMix/100);
                 drum8.pitchMod(0.3);
-                drum8.noteOn();
-
             }
+            
+            // noteOn
+            //drum = drums[gateNrMap[gateNr]];
+            //*drums.noteOn();
+            
+            handleNoteOn(gateNrMap[gateNr]);
+            
+            Serial.print("*drums: ");
+            Serial.println(drums[gateNrMap[gateNr]]);
 
+            Serial.print("tempoPot / clockbpmtime: ");
+            Serial.println(clockbpmtime);
+            
             digitalWrite(leds[gateNrMap[gateNr]], HIGH);
             delay(1);
             digitalWrite(leds[gateNrMap[gateNr]], LOW);
-
+            
             ++gateNr;
             microbeattime = 0;
             resettracker = false;
         }
     }
-
+    
 }
