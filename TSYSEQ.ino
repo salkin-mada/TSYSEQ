@@ -3,8 +3,9 @@
 #include <SPI.h>
 #include <SD.h>
 #include <SerialFlash.h>
+#include <Bounce2.h>
 
-#include <EEPROM.h>
+//#include <EEPROM.h> // cycle count lifespan not so promising use SD / flash instead or FRAM chip
 
 // GUItool: begin automatically generated code
 AudioSynthSimpleDrum     drum2;          //xy=152.99999618530273,173.0000228881836
@@ -54,6 +55,8 @@ AudioConnection          patchCord25(mixer7, 0, dacs1, 0);
 AudioConnection          patchCord26(mixer8, 0, dacs1, 1);
 // GUItool: end automatically generated code
 
+int calculation = 0;
+
 int randomFreq; // ahh so lazy
 int randomLength; // doubleble lazyzy
 int randomSecondMix; //muhaha
@@ -69,6 +72,7 @@ int randomPitchMod; //aargahg lazlazlazzy
 const unsigned int leds[] = {5, 6, 7, 8, 9, 10, 11, 12}; // leds indicating seq activity
 const unsigned int muteLeds[] = {32, 33, 34, 35, 36, 37, 38, 39}; //leds indicating wether a step is on or off
 const unsigned int muteButtons[] = {31, 30, 29, 28, 27, 26, 25, 24};
+Bounce debouncer[8] = {Bounce()}; //deboucing
 // flipped order - convenient for breadboarding
 int buttonState[8] = {1};
 int lastButtonState[8] = {1};
@@ -122,15 +126,15 @@ void irqClock() {
 
 void startUpLights() {
     for (int i = 0; i < 8; ++i) {
-        digitalWrite(muteLeds[i], HIGH);
+        digitalWriteFast(muteLeds[i], HIGH);
         delay(20);
-        digitalWrite(muteLeds[i], LOW);
+        digitalWriteFast(muteLeds[i], LOW);
         delay(5);
     }
     for (int i = 0; i < 8; ++i) {
-        digitalWrite(leds[i], HIGH);
+        digitalWriteFast(leds[i], HIGH);
         delay(20);
-        digitalWrite(leds[i], LOW);   
+        digitalWriteFast(leds[i], LOW);   
         delay(5);     
     }
 }
@@ -194,28 +198,34 @@ void setup() {
     for (int i = 0; i < 8; ++i) {
         pinMode(muteButtons[i], INPUT_PULLUP);
     }
+    // debounce setup
+    for (int i = 0; i < 8; ++i) {
+        debouncer[i].attach(muteButtons[i]);
+        debouncer[i].interval(5);
+    }
     
     startUpLights();
     
     // all muteLeds on because seq boots with all steps active
     for (int i = 0; i < 8; ++i) {
-        digitalWrite(muteLeds[i], HIGH);
+        digitalWriteFast(muteLeds[i], HIGH);
     }
 }
 
 void setStepState(unsigned int i) {
-    
-    buttonState[i] = digitalRead(muteButtons[i]);
-    
+    debouncer[i].update();
+    //buttonState[i] = digitalRead(muteButtons[i]); // classic no debounce
+    buttonState[i] = debouncer[i].read();
+
     if(buttonState[i] != lastButtonState[i]) {
         if(buttonState[i] == 0) {
             if(doStep[i] == false) {
                 doStep[i] = true;
-                digitalWrite(muteLeds[i], HIGH);
+                digitalWriteFast(muteLeds[i], HIGH);
                 Serial.println("true");
             } else if(doStep[i] == true){
                 doStep[i] = false;
-                digitalWrite(muteLeds[i], LOW);
+                digitalWriteFast(muteLeds[i], LOW);
                 Serial.println("false");
             }
         }
@@ -239,51 +249,51 @@ void handleLedDelay(unsigned int i) {
 
 void handleNoteOn(unsigned int i) {
     if (i == 0 && doStep[i] == true) {
-        digitalWrite(leds[i], HIGH);
+        digitalWriteFast(leds[i], HIGH);
         delay(1);
-        digitalWrite(leds[i], LOW);
+        digitalWriteFast(leds[i], LOW);
         drum1.noteOn();
     }
     if (i == 1 && doStep[i] == true) {
-        digitalWrite(leds[i], HIGH);
+        digitalWriteFast(leds[i], HIGH);
         delay(1);
-        digitalWrite(leds[i], LOW);
+        digitalWriteFast(leds[i], LOW);
         drum2.noteOn();
     }
     if (i == 2 && doStep[i] == true) {
-        digitalWrite(leds[i], HIGH);
+        digitalWriteFast(leds[i], HIGH);
         delay(1);
-        digitalWrite(leds[i], LOW);
+        digitalWriteFast(leds[i], LOW);
         drum3.noteOn();
     }
     if (i == 3 && doStep[i] == true) {
-        digitalWrite(leds[i], HIGH);
+        digitalWriteFast(leds[i], HIGH);
         delay(1);
-        digitalWrite(leds[i], LOW);
+        digitalWriteFast(leds[i], LOW);
         drum4.noteOn();
     }
     if (i == 4 && doStep[i] == true) {
-        digitalWrite(leds[i], HIGH);
+        digitalWriteFast(leds[i], HIGH);
         delay(1);
-        digitalWrite(leds[i], LOW);
+        digitalWriteFast(leds[i], LOW);
         drum5.noteOn();
     }
     if (i == 5 && doStep[i] == true) {
-        digitalWrite(leds[i], HIGH);
+        digitalWriteFast(leds[i], HIGH);
         delay(1);
-        digitalWrite(leds[i], LOW);
+        digitalWriteFast(leds[i], LOW);
         drum6.noteOn();
     }
     if (i == 6 && doStep[i] == true) {
-        digitalWrite(leds[i], HIGH);
+        digitalWriteFast(leds[i], HIGH);
         delay(1);
-        digitalWrite(leds[i], LOW);
+        digitalWriteFast(leds[i], LOW);
         drum7.noteOn();
     }
     if (i == 7 && doStep[i] == true) {
-        digitalWrite(leds[i], HIGH);
+        digitalWriteFast(leds[i], HIGH);
         delay(1);
-        digitalWrite(leds[i], LOW);
+        digitalWriteFast(leds[i], LOW);
         drum8.noteOn();
     } 
 }
@@ -307,11 +317,11 @@ void loop() {
         
         //internal clock hack
         if (clocktime >= clockbpmtime) {
-            digitalWrite(tempoled, HIGH);
-            digitalWrite(tempoOut, HIGH);
+            digitalWriteFast(tempoled, HIGH);
+            digitalWriteFast(tempoOut, HIGH);
             delay(1);
-            digitalWrite(tempoled, LOW);
-            digitalWrite(tempoOut, LOW);
+            digitalWriteFast(tempoled, LOW);
+            digitalWriteFast(tempoOut, LOW);
             clocktime = 0;
         }
         
@@ -339,7 +349,7 @@ void loop() {
         seqStartValue = map(seqStartValue, 0, 1010, 0, 7);
         seqEndValue = map(seqEndValue, 0, 850, 0, 7);
         seqOffsetValue = map(seqOffsetValue, 0, 1000, 0, 7);
-        devisionValue = map(devisionValue, 0, 1000, 1, 16); // max 16-dele , kan være højere.
+        devisionValue = map(devisionValue, 0, 1023, 1, 16); // max 16-dele , kan være højere.
         //- kan den laveste devisions værdi være 0.5 ?? aka der skal 2 ticks til et step i sequencen, etc .
         
         // Offset into ->> seqStart and seqEnd
@@ -351,7 +361,7 @@ void loop() {
         float fraction = 1.0/devisionValue;
         
         
-        // check if step is on or off
+        // check if steps are on or off
         for (int i = 0; i < 8; ++i) {
             setStepState(i);
         }
@@ -376,13 +386,13 @@ void loop() {
         
         //sequencer
         if (microbeattime >= t1 || resettracker) {
-            // // experimental fraction update per step in addition to per irqClock flag==true 
-            //t1 = (float(microtime) * fraction);
-            //microtime = 0;
-            // // end of experiment
             
             //length of seq
-            if(gateNr >= seqEndValue) {
+            // if(gateNr >= seqEndValue) {
+            //     gateNr = seqStartValue;
+            // }
+
+            if(gateNr >= seqEndValue + constrain((devisionValue - 8), 0, 8) ) {
                 gateNr = seqStartValue;
             }
             
@@ -459,6 +469,14 @@ void loop() {
            Serial.println(clockbpmtime);
            Serial.print("BPM: ");
            Serial.println(60000/(clockbpmtime/1000));
+           Serial.print("devision: ");
+           Serial.println(devisionValue);
+           Serial.print("fraction: ");
+           Serial.println(fraction);
+
+           Serial.println("seqEndValue + constrain((devisionValue - 8), 0, 8) = ");
+           calculation = seqEndValue + constrain((devisionValue - 8), 0, 8);
+           Serial.println(calculation);
 
            counterr = 3000;
         } 
