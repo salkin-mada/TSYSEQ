@@ -4,6 +4,8 @@
 #include <SD.h>
 #include <SerialFlash.h>
 
+#include <EEPROM.h>
+
 // GUItool: begin automatically generated code
 AudioSynthSimpleDrum     drum2;          //xy=152.99999618530273,173.0000228881836
 AudioSynthSimpleDrum     drum1;          //xy=153.22221755981445,138.2222194671631
@@ -58,22 +60,28 @@ int randomSecondMix; //muhaha
 int randomPitchMod; //aargahg lazlazlazzy
 
 // const char * <-- pointer 
-//const char* drums[8] = {"drum1", "drum2", "drum3", "drum4", "drum5", "drum6", "drum7", "drum8"};
-const char *drums[8] = {"drum1", "drum2", "drum3", "drum4", "drum5", "drum6", "drum7", "drum8"};
+// const char *drums[8] = {"drum1", "drum2", "drum3", "drum4", "drum5", "drum6", "drum7", "drum8"};
 //auto drum = AudioSynthSimpleDrum();
 
 // seq stuff
 //////////////////
 //////////////////
 const unsigned int leds[] = {5, 6, 7, 8, 9, 10, 11, 12}; // leds indicating seq activity
+const unsigned int muteLeds[] = {32, 33, 34, 35, 36, 37, 38, 39}; //leds indicating wether a step is on or off
+const unsigned int muteButtons[] = {31, 30, 29, 28, 27, 26, 25, 24};
+// flipped order - convenient for breadboarding
+int buttonState[8] = {1};
+int lastButtonState[8] = {1};
+bool doStep[8] = {true, true, true, true, true, true, true, true};
 const unsigned int tempoled = 13;
 const unsigned int tempoOut = 23;
+unsigned int ledDelay = 3000; // counter for step leds on off delay without slowing down program
 
 //switch
-const unsigned int switchUp = 0;
-const unsigned int switchDown = 1;
-int switchDownTrig;
-int switchUpTrig;
+//const unsigned int switchUp = 0;
+//const unsigned int switchDown = 1;
+//int switchDownTrig;
+//int switchUpTrig;
 
 int gateNr = 0; //sequencer inits
 const unsigned int gateNrMap[] = {0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7}; // translation map for maximum 16th devisions
@@ -93,28 +101,45 @@ int devisionValue;
 
 // internal clock
 int tempoPin = A4;
-unsigned int clockbpmtime;
+float clockbpmtime;
 
 // CV control
-int cvValuePotPin = A5;
-int cvAssignDestinationStepButtonPin; // any digital pin
-int cvOutValue;
-int cvAssignDestinationStep;
+//int cvValuePotPin = A5;
+//int cvAssignDestinationStepButtonPin; // any digital pin
+//int cvOutValue;
+//int cvAssignDestinationStep;
 
 //interrupt stuff
 const int pinClock = 0; // external clock in i dette tilfælde en hacket internal clock ud og så ind her ...
 //const int debouncetime = 1000; //debouncetid i mikrosekunder
 volatile bool flag = false;
-float fraction = 1.0/8.0; // 1/8 node  init devision
+float fraction = 1.0/8.0; // 1/8 node init devision
+//float fraction = 4.0/4.0; // 4/4 init devision
 
-void irqClock(){
+void irqClock() {
     flag = true;
 }
 
+void startUpLights() {
+    for (int i = 0; i < 8; ++i) {
+        digitalWrite(muteLeds[i], HIGH);
+        delay(20);
+        digitalWrite(muteLeds[i], LOW);
+        delay(5);
+    }
+    for (int i = 0; i < 8; ++i) {
+        digitalWrite(leds[i], HIGH);
+        delay(20);
+        digitalWrite(leds[i], LOW);   
+        delay(5);     
+    }
+}
+
 void setup() {
-    Serial.begin(9600);
+    //Serial.begin(9600);
+    Serial.begin(19200);
     
-    AudioMemory(120);
+    AudioMemory(120); // check bench!
     analogReference(EXTERNAL); // used INTERNAL but now EXT, will be adding some noise but quick fix for proper analog readings
     
     // reverb in
@@ -160,37 +185,111 @@ void setup() {
     for (int i = 0; i < 8; ++i) {
         pinMode(leds[i], OUTPUT);
     }
+    
+    for (int i = 0; i < 8; ++i) {
+        pinMode(muteLeds[i], OUTPUT);
+    }
+    
+    // Pullup for mute pins
+    for (int i = 0; i < 8; ++i) {
+        pinMode(muteButtons[i], INPUT_PULLUP);
+    }
+    
+    startUpLights();
+    
+    // all muteLeds on because seq boots with all steps active
+    for (int i = 0; i < 8; ++i) {
+        digitalWrite(muteLeds[i], HIGH);
+    }
 }
 
+void setStepState(unsigned int i) {
+    
+    buttonState[i] = digitalRead(muteButtons[i]);
+    
+    if(buttonState[i] != lastButtonState[i]) {
+        if(buttonState[i] == 0) {
+            if(doStep[i] == false) {
+                doStep[i] = true;
+                digitalWrite(muteLeds[i], HIGH);
+                Serial.println("true");
+            } else if(doStep[i] == true){
+                doStep[i] = false;
+                digitalWrite(muteLeds[i], LOW);
+                Serial.println("false");
+            }
+        }
+        lastButtonState[i] = buttonState[i];
+    }
+}
+
+void handleLedDelay(unsigned int i) {
+    if (ledDelay-- == 0)
+    {
+       // not stable enough - use 0.1uf cap - argh lazy 
+       Serial.println(analogRead(tempoPin));
+       Serial.print("clockbpmtime: ");
+       Serial.println(clockbpmtime);
+       Serial.print("BPM: ");
+       Serial.println(60000/(clockbpmtime/1000));
+    
+       ledDelay = 3000;
+    }
+} 
+
 void handleNoteOn(unsigned int i) {
-    if (i == 0) {
+    if (i == 0 && doStep[i] == true) {
+        digitalWrite(leds[i], HIGH);
+        delay(1);
+        digitalWrite(leds[i], LOW);
         drum1.noteOn();
     }
-    if (i == 1) {
+    if (i == 1 && doStep[i] == true) {
+        digitalWrite(leds[i], HIGH);
+        delay(1);
+        digitalWrite(leds[i], LOW);
         drum2.noteOn();
     }
-    if (i == 2) {
+    if (i == 2 && doStep[i] == true) {
+        digitalWrite(leds[i], HIGH);
+        delay(1);
+        digitalWrite(leds[i], LOW);
         drum3.noteOn();
     }
-    if (i == 3) {
+    if (i == 3 && doStep[i] == true) {
+        digitalWrite(leds[i], HIGH);
+        delay(1);
+        digitalWrite(leds[i], LOW);
         drum4.noteOn();
     }
-    if (i == 4) {
+    if (i == 4 && doStep[i] == true) {
+        digitalWrite(leds[i], HIGH);
+        delay(1);
+        digitalWrite(leds[i], LOW);
         drum5.noteOn();
     }
-    if (i == 5) {
+    if (i == 5 && doStep[i] == true) {
+        digitalWrite(leds[i], HIGH);
+        delay(1);
+        digitalWrite(leds[i], LOW);
         drum6.noteOn();
     }
-    if (i == 6) {
+    if (i == 6 && doStep[i] == true) {
+        digitalWrite(leds[i], HIGH);
+        delay(1);
+        digitalWrite(leds[i], LOW);
         drum7.noteOn();
     }
-    if (i == 7) {
+    if (i == 7 && doStep[i] == true) {
+        digitalWrite(leds[i], HIGH);
+        delay(1);
+        digitalWrite(leds[i], LOW);
         drum8.noteOn();
     } 
 }
 
 void loop() {
-    
+    unsigned int counterr = 3000; // for slowing down serial print
     //tracker inits
     unsigned int t1 = 250000;
     elapsedMicros microtime;
@@ -198,12 +297,14 @@ void loop() {
     // elapsedMicros debouncer = 0;
     bool resettracker = true;
     
-    // internal clock inits
+    // internal clock
     elapsedMicros clocktime;
     
     //quick scope
     while (1) {
-        clockbpmtime = map(analogRead(tempoPin), 0 ,1023, 1000000, 10000);
+        clockbpmtime = analogRead(tempoPin);
+        clockbpmtime = map(clockbpmtime, 22, 1023, 4000000, 200000);
+        
         //internal clock hack
         if (clocktime >= clockbpmtime) {
             digitalWrite(tempoled, HIGH);
@@ -241,14 +342,19 @@ void loop() {
         devisionValue = map(devisionValue, 0, 1000, 1, 16); // max 16-dele , kan være højere.
         //- kan den laveste devisions værdi være 0.5 ?? aka der skal 2 ticks til et step i sequencen, etc .
         
-        // få offset regnet med i sequence længden (seqStartValue+seqEndValue) ?
+        // Offset into ->> seqStart and seqEnd
         seqStartValue = seqStartValue+seqOffsetValue;
         seqEndValue = seqEndValue+seqOffsetValue;
         
-        // control af fraction . det funker men der kunne godt lige optimeres
-        // på matematikken så den arbejder efter at det er en 8 step seq
+        // control af fraction
+        //float fraction = 4.0/devisionValue;   // hmmm
         float fraction = 1.0/devisionValue;
         
+        
+        // check if step is on or off
+        for (int i = 0; i < 8; ++i) {
+            setStepState(i);
+        }
         
         //tracker
         if (flag /*&& (debouncer > debouncetime)*/) {
@@ -270,6 +376,11 @@ void loop() {
         
         //sequencer
         if (microbeattime >= t1 || resettracker) {
+            // // experimental fraction update per step in addition to per irqClock flag==true 
+            //t1 = (float(microtime) * fraction);
+            //microtime = 0;
+            // // end of experiment
+            
             //length of seq
             if(gateNr >= seqEndValue) {
                 gateNr = seqStartValue;
@@ -283,7 +394,7 @@ void loop() {
             // setting for different drums
             if(gateNrMap[gateNr] == 0){
                 drum1.frequency(70);
-                drum1.length(randomLength*10);
+                drum1.length((randomLength/2)*10);
                 drum1.secondMix(randomSecondMix/100);
                 drum1.pitchMod(0.6);
             }
@@ -331,25 +442,25 @@ void loop() {
             }
             
             // noteOn
-            //drum = drums[gateNrMap[gateNr]];
-            //*drums.noteOn();
-            
+            // make step
             handleNoteOn(gateNrMap[gateNr]);
-            
-            Serial.print("*drums: ");
-            Serial.println(drums[gateNrMap[gateNr]]);
-
-            Serial.print("tempoPot / clockbpmtime: ");
-            Serial.println(clockbpmtime);
-            
-            digitalWrite(leds[gateNrMap[gateNr]], HIGH);
-            delay(1);
-            digitalWrite(leds[gateNrMap[gateNr]], LOW);
             
             ++gateNr;
             microbeattime = 0;
             resettracker = false;
         }
+        
+        
+        if (counterr-- == 0)
+        {
+           // not stable enough - use 0.1uf cap - argh lazy 
+           Serial.println(analogRead(tempoPin));
+           Serial.print("clockbpmtime: ");
+           Serial.println(clockbpmtime);
+           Serial.print("BPM: ");
+           Serial.println(60000/(clockbpmtime/1000));
+
+           counterr = 3000;
+        } 
     }
-    
 }
