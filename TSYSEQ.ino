@@ -1,11 +1,20 @@
+
+// at the moment this sequencer incorporates some bad math
+// this gives some interesting counter intuitive results
+
 #include <Audio.h>
 #include <Wire.h>
+#include <SerialFlash.h>
 #include <SPI.h>
 #include <SD.h>
-#include <SerialFlash.h>
 #include <Bounce2.h>
+//#include <EEPROM.h>
 
-//#include <EEPROM.h> // cycle count lifespan not so promising use SD / flash instead or FRAM chip
+//#include <Arduino.h>
+#include "Leds.h"
+
+File recallFile;
+const int chipSelect = BUILTIN_SDCARD;
 
 // GUItool: begin automatically generated code
 AudioSynthSimpleDrum     drum2;          //xy=152.99999618530273,173.0000228881836
@@ -55,31 +64,35 @@ AudioConnection          patchCord25(mixer7, 0, dacs1, 0);
 AudioConnection          patchCord26(mixer8, 0, dacs1, 1);
 // GUItool: end automatically generated code
 
-int calculation = 0;
+int calculation = 0; // for Serial monitor debugging
 
 int randomFreq; // ahh so lazy
 int randomLength; // doubleble lazyzy
 int randomSecondMix; //muhaha
 int randomPitchMod; //aargahg lazlazlazzy
 
-// const char * <-- pointer 
 // const char *drums[8] = {"drum1", "drum2", "drum3", "drum4", "drum5", "drum6", "drum7", "drum8"};
 //auto drum = AudioSynthSimpleDrum();
 
 // seq stuff
 //////////////////
 //////////////////
-const unsigned int leds[] = {5, 6, 7, 8, 9, 10, 11, 12}; // leds indicating seq activity
-const unsigned int muteLeds[] = {32, 33, 34, 35, 36, 37, 38, 39}; //leds indicating wether a step is on or off
+//const unsigned int leds[] = {5, 6, 7, 8, 9, 10, 11, 12}; // leds indicating seq activity
+//const unsigned int muteLeds[] = {32, 33, 34, 35, 36, 37, 38, 39}; //leds indicating wether a step is on or off
 const unsigned int muteButtons[] = {31, 30, 29, 28, 27, 26, 25, 24};
 Bounce debouncer[8] = {Bounce()}; //deboucing
 // flipped order - convenient for breadboarding
 int buttonState[8] = {1};
 int lastButtonState[8] = {1};
 bool doStep[8] = {true, true, true, true, true, true, true, true};
+bool flagHasHandledNoteOn[8] = {false, false, false, false, false, false, false, false};
 const unsigned int tempoled = 13;
 const unsigned int tempoOut = 23;
-unsigned int ledDelay = 3000; // counter for step leds on off delay without slowing down program
+
+//config stuff
+unsigned int ledDelayTime = 500;
+unsigned int ledDelayCounter[8] = {500}; // counters for step leds on off delay without slowing down program
+
 
 //switch
 //const unsigned int switchUp = 0;
@@ -90,7 +103,7 @@ unsigned int ledDelay = 3000; // counter for step leds on off delay without slow
 int gateNr = 0; //sequencer inits
 const unsigned int gateNrMap[] = {0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7}; // translation map for maximum 16th devisions
 
-// control definitions
+// control declarations/definitions
 // seq length and offset
 int seqStartPotPin = A0;
 int seqEndPotPin = A1;
@@ -118,33 +131,58 @@ const int pinClock = 0; // external clock in i dette tilfælde en hacket interna
 //const int debouncetime = 1000; //debouncetid i mikrosekunder
 volatile bool flag = false;
 float fraction = 1.0/8.0; // 1/8 node init devision
-//float fraction = 4.0/4.0; // 4/4 init devision
 
 void irqClock() {
     flag = true;
 }
 
-void startUpLights() {
-    for (int i = 0; i < 8; ++i) {
-        digitalWriteFast(muteLeds[i], HIGH);
-        delay(20);
-        digitalWriteFast(muteLeds[i], LOW);
-        delay(5);
-    }
-    for (int i = 0; i < 8; ++i) {
-        digitalWriteFast(leds[i], HIGH);
-        delay(20);
-        digitalWriteFast(leds[i], LOW);   
-        delay(5);     
-    }
-}
-
 void setup() {
     //Serial.begin(9600);
     Serial.begin(19200);
+    // while(!Serial) {
+    //     ;
+    // }; // wait for Serial
     
-    AudioMemory(120); // check bench!
+    AudioMemory(120); // check bench! maybe only 20 needed
     analogReference(EXTERNAL); // used INTERNAL but now EXT, will be adding some noise but quick fix for proper analog readings
+    
+    /////
+    // Serial.print("Initializing SD card...");
+    // if (!SD.begin(chipSelect)) {
+    //     Serial.println("initialization failed!");
+    //     return;
+    // }
+    // Serial.println("initialization done.");
+    // recallFile = SD.open("recall.txt", FILE_WRITE);
+    
+    // // if the file opened okay, write to it:
+    // if (recallFile) {
+    //     Serial.print("Writing to recall.txt...");
+    //     recallFile.println("true, false, false, true, true, false, true, false");
+    //     // close the file:
+    //     recallFile.close();
+    //     Serial.println("done.");
+    // } else {
+    //     // if the file didn't open, print an error:
+    //     Serial.println("error opening recall.txt");
+    // }
+    // // re-open the file for reading:
+    // recallFile = SD.open("recall.txt");
+    // if (recallFile) {
+    //     Serial.println("reading the file");
+    //     Serial.println("recall.txt:");
+        
+    //     // read from the file until there's nothing else in it:
+    //     while (recallFile.available()) {
+    //         Serial.write(recallFile.read());
+    //     }
+    //     // close the file:
+    //     recallFile.close();
+    // } else {
+    //     // if the file didn't open, print an error:
+    //     Serial.println("error opening recall.txt");
+    // }
+    /////
     
     // reverb in
     mixer1.gain(0, 0.3);
@@ -204,8 +242,10 @@ void setup() {
         debouncer[i].interval(5);
     }
     
-    startUpLights();
-    
+    //startUpLights();
+    //Leds(startUp());
+    LEDS_startUp();
+
     // all muteLeds on because seq boots with all steps active
     for (int i = 0; i < 8; ++i) {
         digitalWriteFast(muteLeds[i], HIGH);
@@ -216,7 +256,7 @@ void setStepState(unsigned int i) {
     debouncer[i].update();
     //buttonState[i] = digitalRead(muteButtons[i]); // classic no debounce
     buttonState[i] = debouncer[i].read();
-
+    
     if(buttonState[i] != lastButtonState[i]) {
         if(buttonState[i] == 0) {
             if(doStep[i] == false) {
@@ -234,66 +274,72 @@ void setStepState(unsigned int i) {
 }
 
 void handleLedDelay(unsigned int i) {
-    if (ledDelay-- == 0)
+    // checking them all every cycle, humans are slow.
+    if (flagHasHandledNoteOn[i] == true)
     {
-       // not stable enough - use 0.1uf cap - argh lazy 
-       Serial.println(analogRead(tempoPin));
-       Serial.print("clockbpmtime: ");
-       Serial.println(clockbpmtime);
-       Serial.print("BPM: ");
-       Serial.println(60000/(clockbpmtime/1000));
-    
-       ledDelay = 3000;
+        if(ledDelayCounter[i]-- == 0) {
+            digitalWriteFast(leds[i], LOW);
+            flagHasHandledNoteOn[i] = false;
+            ledDelayCounter[i] = ledDelayTime;
+        }
     }
 } 
 
 void handleNoteOn(unsigned int i) {
     if (i == 0 && doStep[i] == true) {
         digitalWriteFast(leds[i], HIGH);
-        delay(1);
-        digitalWriteFast(leds[i], LOW);
+        flagHasHandledNoteOn[i] = true;
+        // delay(1);
+        // digitalWriteFast(leds[i], LOW);
         drum1.noteOn();
     }
     if (i == 1 && doStep[i] == true) {
         digitalWriteFast(leds[i], HIGH);
-        delay(1);
-        digitalWriteFast(leds[i], LOW);
+        flagHasHandledNoteOn[i] = true;
+        // delay(1);
+        // digitalWriteFast(leds[i], LOW);
         drum2.noteOn();
     }
     if (i == 2 && doStep[i] == true) {
         digitalWriteFast(leds[i], HIGH);
-        delay(1);
-        digitalWriteFast(leds[i], LOW);
+        flagHasHandledNoteOn[i] = true;
+        // delay(1);
+        // digitalWriteFast(leds[i], LOW);
         drum3.noteOn();
     }
     if (i == 3 && doStep[i] == true) {
         digitalWriteFast(leds[i], HIGH);
-        delay(1);
-        digitalWriteFast(leds[i], LOW);
+        flagHasHandledNoteOn[i] = true;
+        // delay(1);
+        // digitalWriteFast(leds[i], LOW);
         drum4.noteOn();
     }
     if (i == 4 && doStep[i] == true) {
         digitalWriteFast(leds[i], HIGH);
-        delay(1);
-        digitalWriteFast(leds[i], LOW);
+        flagHasHandledNoteOn[i] = true;
+        // delay(1);
+        // digitalWriteFast(leds[i], LOW);
         drum5.noteOn();
     }
     if (i == 5 && doStep[i] == true) {
         digitalWriteFast(leds[i], HIGH);
-        delay(1);
-        digitalWriteFast(leds[i], LOW);
+        flagHasHandledNoteOn[i] = true;
+        // delay(1);
+        // digitalWriteFast(leds[i], LOW);
         drum6.noteOn();
     }
     if (i == 6 && doStep[i] == true) {
         digitalWriteFast(leds[i], HIGH);
-        delay(1);
-        digitalWriteFast(leds[i], LOW);
+        flagHasHandledNoteOn[i] = true;
+        // delay(1);
+        // digitalWriteFast(leds[i], LOW);
         drum7.noteOn();
     }
     if (i == 7 && doStep[i] == true) {
         digitalWriteFast(leds[i], HIGH);
-        delay(1);
-        digitalWriteFast(leds[i], LOW);
+        flagHasHandledNoteOn[i] = true;
+        // delay(1);
+        // digitalWriteFast(leds[i], LOW);
         drum8.noteOn();
     } 
 }
@@ -312,7 +358,7 @@ void loop() {
     
     //quick scope
     while (1) {
-        clockbpmtime = analogRead(tempoPin);
+        clockbpmtime = analogRead(tempoPin); // try responsive version?
         clockbpmtime = map(clockbpmtime, 22, 1023, 4000000, 200000);
         
         //internal clock hack
@@ -389,96 +435,104 @@ void loop() {
             
             //length of seq
             // if(gateNr >= seqEndValue) {
-            //     gateNr = seqStartValue;
-            // }
+                //     gateNr = seqStartValue;
+                // }
+                
+                if(gateNr >= seqEndValue + constrain((devisionValue - 8), 0, 8) ) {
+                    gateNr = seqStartValue;
+                }
+                
+                randomFreq = random(0, 20);
+                randomLength = random(20, 100);
+                randomSecondMix = random(0, 100);
+                randomPitchMod = random(0, 100);
+                
+                // setting for different drums
+                if(gateNrMap[gateNr] == 0){
+                    drum1.frequency(70);
+                    drum1.length((randomLength/2)*10);
+                    drum1.secondMix(randomSecondMix/100);
+                    drum1.pitchMod(0.6);
+                }
+                if(gateNrMap[gateNr] == 1){
+                    drum2.frequency(1000+randomFreq);
+                    drum2.length(randomLength/6);
+                    drum2.secondMix(0);
+                    drum2.pitchMod(0.9);
+                }
+                if(gateNrMap[gateNr] == 2){
+                    drum3.frequency(randomFreq*200);
+                    drum3.length(randomLength/2);
+                    drum3.secondMix(0);
+                    drum3.pitchMod(0.5);
+                }
+                if(gateNrMap[gateNr] == 3){
+                    drum4.frequency(5000);
+                    drum4.length(randomLength/3);
+                    drum4.secondMix(0);
+                    drum4.pitchMod(0.45);
+                }
+                if(gateNrMap[gateNr] == 4){
+                    drum5.frequency(150+randomFreq);
+                    drum5.length(randomLength*2);
+                    drum5.secondMix(0);
+                    drum5.pitchMod(0.5);
+                }
+                if(gateNrMap[gateNr] == 5){
+                    drum6.frequency(120);
+                    drum6.length(randomLength/2);
+                    drum6.secondMix(randomSecondMix/100);
+                    drum6.pitchMod(0.7);
+                }
+                if(gateNrMap[gateNr] == 6){
+                    drum7.frequency(9000+randomFreq);
+                    drum7.length(randomLength/2);
+                    drum7.secondMix(randomSecondMix/100);
+                    drum7.pitchMod(0.2);
+                }
+                if(gateNrMap[gateNr] == 7){
+                    drum8.frequency(1900);
+                    drum8.length(randomLength/4);
+                    drum8.secondMix(randomSecondMix/100);
+                    drum8.pitchMod(0.3);
+                }
+                
+                // noteOn
+                // make step
+                handleNoteOn(gateNrMap[gateNr]);
+                
+                ++gateNr;
+                microbeattime = 0;
+                resettracker = false;
+            }
+            
+            for (int i = 0; i < 8; ++i){
+                handleLedDelay(i);
+            }
+            
+            
+            
+            
+            if (counterr-- == 0)
+            {
+                // not stable enough - use 0.1uf cap - argh lazy 
+                Serial.print("direct reading tempoPin: ");
+                Serial.println(analogRead(tempoPin)); // and show a responsive version!
+                Serial.print("clockbpmtime: ");
+                Serial.println(clockbpmtime);
+                Serial.print("BPM: ");
+                Serial.println(60000/(clockbpmtime/1000));
+                Serial.print("devision: ");
+                Serial.println(devisionValue);
+                Serial.print("fraction: ");
+                Serial.println(fraction);
+                
+                Serial.println("seqEndValue + constrain((devisionValue - 8), 0, 8) = ");
+                calculation = seqEndValue + constrain((devisionValue - 8), 0, 8);
+                Serial.println(calculation);
 
-            if(gateNr >= seqEndValue + constrain((devisionValue - 8), 0, 8) ) {
-                gateNr = seqStartValue;
-            }
-            
-            randomFreq = random(0, 20);
-            randomLength = random(20, 100);
-            randomSecondMix = random(0, 100);
-            randomPitchMod = random(0, 100);
-            
-            // setting for different drums
-            if(gateNrMap[gateNr] == 0){
-                drum1.frequency(70);
-                drum1.length((randomLength/2)*10);
-                drum1.secondMix(randomSecondMix/100);
-                drum1.pitchMod(0.6);
-            }
-            if(gateNrMap[gateNr] == 1){
-                drum2.frequency(1000+randomFreq);
-                drum2.length(randomLength/6);
-                drum2.secondMix(0);
-                drum2.pitchMod(0.9);
-            }
-            if(gateNrMap[gateNr] == 2){
-                drum3.frequency(randomFreq*200);
-                drum3.length(randomLength/2);
-                drum3.secondMix(0);
-                drum3.pitchMod(0.5);
-            }
-            if(gateNrMap[gateNr] == 3){
-                drum4.frequency(5000);
-                drum4.length(randomLength/3);
-                drum4.secondMix(0);
-                drum4.pitchMod(0.45);
-            }
-            if(gateNrMap[gateNr] == 4){
-                drum5.frequency(150+randomFreq);
-                drum5.length(randomLength*2);
-                drum5.secondMix(0);
-                drum5.pitchMod(0.5);
-            }
-            if(gateNrMap[gateNr] == 5){
-                drum6.frequency(120);
-                drum6.length(randomLength/2);
-                drum6.secondMix(randomSecondMix/100);
-                drum6.pitchMod(0.7);
-            }
-            if(gateNrMap[gateNr] == 6){
-                drum7.frequency(9000+randomFreq);
-                drum7.length(randomLength/2);
-                drum7.secondMix(randomSecondMix/100);
-                drum7.pitchMod(0.2);
-            }
-            if(gateNrMap[gateNr] == 7){
-                drum8.frequency(1900);
-                drum8.length(randomLength/4);
-                drum8.secondMix(randomSecondMix/100);
-                drum8.pitchMod(0.3);
-            }
-            
-            // noteOn
-            // make step
-            handleNoteOn(gateNrMap[gateNr]);
-            
-            ++gateNr;
-            microbeattime = 0;
-            resettracker = false;
+                counterr = 3000;
+            } 
         }
-        
-        
-        if (counterr-- == 0)
-        {
-           // not stable enough - use 0.1uf cap - argh lazy 
-           Serial.println(analogRead(tempoPin));
-           Serial.print("clockbpmtime: ");
-           Serial.println(clockbpmtime);
-           Serial.print("BPM: ");
-           Serial.println(60000/(clockbpmtime/1000));
-           Serial.print("devision: ");
-           Serial.println(devisionValue);
-           Serial.print("fraction: ");
-           Serial.println(fraction);
-
-           Serial.println("seqEndValue + constrain((devisionValue - 8), 0, 8) = ");
-           calculation = seqEndValue + constrain((devisionValue - 8), 0, 8);
-           Serial.println(calculation);
-
-           counterr = 3000;
-        } 
     }
-}
+    
