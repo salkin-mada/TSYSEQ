@@ -4,14 +4,16 @@
 #include <SPI.h>
 #include <SD.h>
 // #include <EEPROM.h>
+extern int exINT;
+extern float exFloat;
+extern boolean exBoolean;
+extern long exLong;
 
-// use do step to check if some settings has changes
 extern bool doStep[];
-
-//extern int buttonState[]; 
-//extern int BUTTON_PRESSED;
+extern int flagAbuttonHaveBeenPressed;
 
 void SD_init();
+void SD_checkTypeAndListRoot();
 void SD_writeSettings(unsigned int i);
 void SD_readSettings();
 void SD_readAllSettings2Monitor();
