@@ -68,6 +68,10 @@ AudioConnection          patchCord26(mixer8, 0, dacs1, 1);
 
 int calculation = 0; // for Serial monitor debugging
 
+// time guard stuff for quick scope
+unsigned long previousTimeGuard = 0;
+const long timeGuardInterval = 2000;
+
 int randomFreq; // ahh so lazy
 int randomLength; // doubleble lazyzy
 int randomSecondMix; //muhaha
@@ -328,9 +332,7 @@ void handleNoteOn(unsigned int i) {
     } 
 }
 
-// time guard stuff for quick scope
-unsigned long previousTimeGuard = 0;
-unsigned int timeGuardInterval = 2000;
+
 
 void loop() {
     //tracker inits
@@ -343,11 +345,13 @@ void loop() {
     // internal clock
     elapsedMicros clocktime;
     
-    // time guard for quick scope
-    unsigned long currentTimeGuard = millis();    
+ 
     
     //quick scope
     while (1) {
+        // time guard for quick scope
+        unsigned long currentTimeGuard = millis();   
+
         clockbpmtime = analogRead(tempoPin); // try responsive version?
         clockbpmtime = map(clockbpmtime, 22, 1023, 4000000, 200000);
         
