@@ -32,14 +32,17 @@ boolean toBoolean(String settingValue) {
 const int chipSelect = BUILTIN_SDCARD;
 File recallFile;
 
+/* ################################## INIT ################################## */
+/* ################################### SD ################################### */
+
 void SD_init() {
-    Serial.print("Initializing SD card...");
+    // Serial.print("Initializing SD card...");
     if (!SD.begin(chipSelect)) {
-        Serial.println("initialization failed!");
+        // Serial.println("initialization failed!");
         return;
     }
     
-    Serial.println("initialization done.");
+    // Serial.println("initialization done.");
     
     /* if (SD.exists("SETTINGS.TXT") == true) {
         if (SD.remove("SETTINGS.TXT") == true); {
@@ -53,6 +56,9 @@ void SD_init() {
     
     delay(200);
 }
+
+/* ################################## CHECK ################################## */
+/* ################################### ROOT ################################## */
 
 // denne er farlig; bliver ikke lukket ordentligt, og jeg kan derfor ikke skrive til kortet...
 void SD_checkTypeAndListRoot() {
@@ -121,6 +127,9 @@ void SD_checkTypeAndListRoot() {
     
 }
 
+/* ################################## READ ################################### */
+/* ################################ SETTINGS ################################# */
+
 void SD_readSettings(){
     if (SD.exists("settings.txt") == true) {
         char character;
@@ -146,22 +155,22 @@ void SD_readSettings(){
                 }
                 
                 // debug names
-                Serial.print("debuggg names __ ");
-                Serial.println(settingName);
+                // Serial.print("debuggg names __ ");
+                // Serial.println(settingName);
                 if (settingName.length() == 0) {
-                    Serial.println("--> halla --> String settingName is empty !");
+                    // Serial.println("--> halla --> String settingName is empty !");
                 } // break , goto close file
                 
                 if (character == '{') {
                     character = recallFile.read();
-                    Serial.println("i found a {");
+                    // Serial.println("i found a {");
                     while(recallFile.available() && (character != '}')) {
                         settingValue = settingValue + character;
                         character = recallFile.read();
                         if (character == ',') {
                             character = recallFile.read();
-                            Serial.println("i found a ,");
-                            Serial.println(settingValue);
+                            // Serial.println("i found a ,");
+                            // Serial.println(settingValue);
                             settingValueArray[i] = settingValue;
                             //reset string
                             settingValue = "";
@@ -170,8 +179,8 @@ void SD_readSettings(){
                     }
                     if (character == '}') {
                         character = recallFile.read();
-                        Serial.println("i found a }");
-                        Serial.println(settingValue);
+                        // Serial.println("i found a }");
+                        // Serial.println(settingValue);
                         settingValueArray[i] = settingValue;
                     }
                 }
@@ -179,7 +188,7 @@ void SD_readSettings(){
                 if(character == ']'){
                     
                     //Debugging
-                    if (settingName != "doStep") {
+                    /* if (settingName != "doStep") {
                         Serial.print("Name:");
                         Serial.println(settingName);
                         Serial.print("Value :");
@@ -194,7 +203,7 @@ void SD_readSettings(){
                             Serial.println(doStep[j]);
                             
                         }
-                    } // debugging end
+                    } */ // debugging end
                     
                     // Apply the value to the parameter
                     flagSettingsHaveBeenRead = true;
@@ -206,7 +215,7 @@ void SD_readSettings(){
             }
             // close the file:
             recallFile.close();
-            Serial.println("closed file");
+            // Serial.println("closed file");
         } else {
             // if the file didn't open, print an error:
             Serial.println("error opening settings.txt");
@@ -215,6 +224,10 @@ void SD_readSettings(){
         Serial.println("SD_read could not find settings.txt");
     }
 }
+
+/* ################################# APPLY ################################### */
+/* ################################ SETTINGS ################################# */
+
 
 void applySetting(String settingName, String settingValue) {
     if (flagSettingsHaveBeenRead == true) {
@@ -257,9 +270,6 @@ void applySetting(String settingName, String settingValue) {
 
 /* ################################## WRITE ################################## */
 /* ################################ SETTINGS ################################# */
-
-
-
 void SD_writeSettings(unsigned int i) {
     
     if (flagAbuttonHaveBeenPressed == 1) {

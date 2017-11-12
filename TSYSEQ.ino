@@ -4,6 +4,8 @@
 
 // todo
 // 1K Resistor on all muteleds
+// resetAmountOfTicks (how many ticks per reset)
+// try responsive analog reading for pots
 
 #include <Audio.h>
 #include <Wire.h>
@@ -13,6 +15,7 @@
 
 
 // #include <Arduino.h> // check om det hjælper på ledDelayTime print her?
+// eller skal jeg bruge inline voids og static inline int eksempelvis
 #include "Settings.h"
 #include "Leds.h"
 
@@ -70,7 +73,7 @@ int calculation = 0; // for Serial monitor debugging
 
 // time guard stuff for quick scope
 unsigned long previousTimeGuard = 0;
-const long timeGuardInterval = 2000;
+const long timeGuardInterval = 200;
 
 int randomFreq; // ahh so lazy
 int randomLength; // doubleble lazyzy
@@ -112,7 +115,12 @@ long exLong = 2123456789;
 //int switchUpTrig;
 
 int gateNr = 0; //sequencer inits
-const unsigned int gateNrMap[] = {0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7}; // translation map for maximum 16th devisions
+const unsigned int gateNrMap[] = {
+    0,1,2,3,4,5,6,7,
+    0,1,2,3,4,5,6,7,
+    0,1,2,3,4,5,6,7,
+    0,1,2,3,4,5,6,7 // max 4 times wrapping. maybe higher is needed.
+}; // translation map for maximum 16th devisions
 
 // control declarations/definitions
 // seq length and offset
@@ -126,6 +134,13 @@ int seqOffsetValue;
 // fraction
 int devisionPot = A3;
 int devisionValue;
+
+unsigned int dividendValue;
+unsigned int divisorValue;
+
+// experimental
+int interruptCountToStepResetPot = A5;
+int interruptCountToStepResetValue;
 
 // internal clock
 int tempoPin = A4;
@@ -141,9 +156,14 @@ float clockbpmtime;
 const int pinClock = 0; // external clock in i dette tilfælde en hacket internal clock ud og så ind her ...
 //const int debouncetime = 1000; //debouncetid i mikrosekunder
 volatile bool flag = false;
+int interruptCountToStepReset = 0;
 float fraction = 1.0/8.0; // 1/8 node init devision
 
 void irqClock() {
+    /*     if (interruptCountToReset) {
+        flag = true;
+        interruptCountToReset = 0;
+    } */
     flag = true;
 }
 
@@ -216,18 +236,16 @@ void setup() {
         debouncer[i].interval(5);
     }
     
-    //startUpLights();
-    //Leds(startUp());
-    Serial.println("iam awake");
+    
+    //Serial.println("iam awake");
     LEDS_startUp();
     
     SD_init();
-    //SD_checkTypeAndListRoot();
+    //SD_checkTypeAndListRoot(); // DANGER DANGER
     //delay(2000);
-    //SD_writeSettings(0);
-    SD_readSettings();
+    SD_readSettings(); // and apply to program parameters/variables
     //Serial.println("-----> I MANAGED TO READ SETTINGS AFTER INIT <-----");
-    //apply loaded settings
+    //apply loaded settings to UI (muteLeds)
     for (int i = 0; i < 8; ++i) {
         //doStep[i] = exBooleanArray[i];
         if (doStep[i] == true) {
@@ -345,13 +363,13 @@ void loop() {
     // internal clock
     elapsedMicros clocktime;
     
- 
+    
     
     //quick scope
     while (1) {
         // time guard for quick scope
         unsigned long currentTimeGuard = millis();   
-
+        
         clockbpmtime = analogRead(tempoPin); // try responsive version?
         clockbpmtime = map(clockbpmtime, 22, 1023, 4000000, 200000);
         
@@ -359,7 +377,7 @@ void loop() {
         if (clocktime >= clockbpmtime) {
             digitalWriteFast(tempoled, HIGH);
             digitalWriteFast(tempoOut, HIGH);
-            delay(1);
+            delay(1); // remove delay with nice counter delay
             digitalWriteFast(tempoled, LOW);
             digitalWriteFast(tempoOut, LOW);
             clocktime = 0;
@@ -367,45 +385,45 @@ void loop() {
         
         
         //seq controls
+        // read knobs
         seqStartValue = analogRead(seqStartPotPin);
         seqEndValue = analogRead(seqEndPotPin);
         seqOffsetValue = analogRead(seqOffsetPin);
         devisionValue = analogRead(devisionPot);
-        // Serial.print("seqStartValue: ");
-        // Serial.println(seqStartValue);
-        // Serial.print("seqEndValue: ");
-        // Serial.println(seqEndValue);
-        // Serial.print("seqOffsetValue: ");
-        // Serial.println(seqOffsetValue);
-        // Serial.print("devisionValue: ");
-        // Serial.println(devisionValue);
+        interruptCountToStepResetValue = analogRead(interruptCountToStepResetPot);
         
-        //cv control
-        //cvOutValue = analogRead(cvValuePotPin);
-        //cvOutValue = map(cvOutValue, 0, 1023, 0, 1000); // value til cvOut - dac A14 - skal repræsenterer DC 0-3.3V (0-10V)?
-        //cvAssignDestinationStep = digitalRead(cvAssignDestinationStepButtonPin);
-        
-        //control scaling
-        seqStartValue = map(seqStartValue, 0, 1010, 0, 7);
-        seqEndValue = map(seqEndValue, 0, 850, 0, 7);
+        seqStartValue = constrain(map(seqStartValue, 0, 1010, 0, 7), 0, 7);
+        seqEndValue = constrain(map(seqEndValue, 0, 850, 0, 7), 0, 7);
         seqOffsetValue = map(seqOffsetValue, 0, 1000, 0, 7);
-        devisionValue = map(devisionValue, 0, 1023, 1, 16); // max 16-dele , kan være højere.
-        //- kan den laveste devisions værdi være 0.5 ?? aka der skal 2 ticks til et step i sequencen, etc .
+        interruptCountToStepResetValue = map(interruptCountToStepResetValue, 90, 1023, 1, 8);
+        
+        devisionValue = map(devisionValue, 90, 1023, 1, 16);
         
         // Offset into ->> seqStart and seqEnd
         seqStartValue = seqStartValue+seqOffsetValue;
         seqEndValue = seqEndValue+seqOffsetValue;
         
         // control af fraction
-        //float fraction = 4.0/devisionValue;   // hmmm
-        float fraction = 1.0/devisionValue;
+        // old one
+        //float fraction = 1.0/devisionValue;
+        
+        // new one
+        // dividend (faster)
+        dividendValue = analogRead(devisionPot);
+        dividendValue = constrain(map(dividendValue, 550, 1023, 1, 16), 1, 16);
+
+        // devisor (slower)
+        divisorValue = analogRead(devisionPot);
+        divisorValue = constrain(map(divisorValue, 90, 450, 16, 1), 1, 16);
+
+        float fraction = 1.0 / (dividendValue / divisorValue);
         
         
         // check if steps are on or off
         for (int i = 0; i < 8; ++i) {
             setStepState(i);
             SD_writeSettings(i);
-            flagAbuttonHaveBeenPressed = 0;
+            flagAbuttonHaveBeenPressed = 0; // burde denne være inde i SD_writeSettings
         }
         
         //tracker
@@ -415,15 +433,26 @@ void loop() {
             microtime = 0;
             microbeattime = 0;
             flag = false;
-            resettracker = true;
+
+            
             
             //extended "sync" part of tracking
-            gateNr = seqStartValue;
+            if (interruptCountToStepReset >= interruptCountToStepResetValue) {
+                resettracker = true;
+                gateNr = seqStartValue;
+                Serial.println("¤¤¤¤¤¤¤¤¤¤");
+                Serial.println("¤¤¤¤¤¤¤¤¤¤");
+                Serial.println("step reset");
+                interruptCountToStepReset = 0;
+            }
+            //gateNr = seqStartValue;
             
             // fraction kan bruges i en funktion sådan at det kan
             // kontrolleres hvor ofte sequenceren sætter seqStartValue til gateNr
             // men der bliver jo tænkt lidt anderldes om dette i seq delen nedenunder .
             // if gate er større end endvalue set gate til seqstartvalue
+
+            interruptCountToStepReset++;
         }
         
         //sequencer
@@ -434,10 +463,35 @@ void loop() {
                 gateNr = seqStartValue;
             } */
             
-            if(gateNr >= seqEndValue + constrain((devisionValue - 8), 0, 8) ) {
+            if(gateNr >= 1 + seqEndValue + constrain((devisionValue - 8), 0, 8) ) {
                 gateNr = seqStartValue; // trying to control wierd foldback/over behavior
             }
             
+            Serial.print("###########");
+            Serial.println("___________");
+            Serial.print("seqStartValue: ");
+            Serial.println(seqStartValue);
+            Serial.print("seqEndValue: ");
+            Serial.println(seqEndValue);
+            Serial.print("seqOffsetValue: ");
+            Serial.println(seqOffsetValue);
+            Serial.print("devisionValue: ");
+            Serial.println(devisionValue);
+            Serial.print("interruptCountToStepResetValue: ");
+            Serial.println(interruptCountToStepResetValue);
+            Serial.print("gateNrMap: ");
+            Serial.println(gateNrMap[gateNr]);
+            Serial.print("gateNr: ");
+            Serial.println(gateNr);
+
+
+            Serial.print("dividendValue (faster): ");
+            Serial.println(dividendValue);
+            Serial.print("divisorValue (slower): ");
+            Serial.println(divisorValue);
+
+            
+            // sounds      
             randomFreq = random(0, 20);
             randomLength = random(20, 100);
             randomSecondMix = random(0, 100);
@@ -497,6 +551,7 @@ void loop() {
             // make step
             handleNoteOn(gateNrMap[gateNr]);
             
+            // seq
             ++gateNr;
             microbeattime = 0;
             resettracker = false;
@@ -508,9 +563,24 @@ void loop() {
             LEDS_off(i);   
         }
         
+        // debugg serial print delay
         if (currentTimeGuard - previousTimeGuard >= timeGuardInterval) {
-            SD_readAllSettings2Monitor();
-            previousTimeGuard = currentTimeGuard;
+            //SD_readAllSettings2Monitor();
+            
+            /* Serial.print("seqStartValue: ");
+            Serial.println(seqStartValue);
+            Serial.print("seqEndValue: ");
+            Serial.println(seqEndValue);
+            Serial.print("seqOffsetValue: ");
+            Serial.println(seqOffsetValue);
+            Serial.print("devisionValue: ");
+            Serial.println(devisionValue);
+            Serial.print("interruptCountToStepResetValue: ");
+            Serial.println(interruptCountToStepResetValue); */
+            
+            
+            
+            previousTimeGuard = currentTimeGuard; 
             /*    not stable enough - use 0.1uf cap - argh lazy 
             Serial.print("direct reading tempoPin: ");
             Serial.println(analogRead(tempoPin)); // and show a responsive version!

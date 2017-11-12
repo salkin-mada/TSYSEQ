@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 unsigned int ledDelayTime = 100;
-unsigned int ledDelayCounter[8] = {100}; 
+unsigned int ledDelayCounter[8] = {ledDelayTime}; 
 
 
 void LEDS_startUp() {
