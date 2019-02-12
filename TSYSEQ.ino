@@ -7,6 +7,11 @@
 // resetAmountOfTicks (how many ticks per reset)
 // try responsive analog reading for pots
 
+// lokk into
+// std::random_shuffle
+// PImpl
+// tupedefs
+
 #include <Audio.h>
 #include <Wire.h>
 #include <SerialFlash.h>
@@ -90,9 +95,11 @@ int flagAbuttonHaveBeenPressed = 0;
 //////////////////
 //const unsigned int leds[] = {5, 6, 7, 8, 9, 10, 11, 12}; // leds indicating seq activity
 //const unsigned int muteLeds[] = {32, 33, 34, 35, 36, 37, 38, 39}; //leds indicating wether a step is on or off
+
 const unsigned int muteButtons[] = {31, 30, 29, 28, 27, 26, 25, 24};
-Bounce debouncer[8] = {Bounce()}; //deboucing
 // flipped order - convenient for breadboarding
+Bounce debouncer[8] = {Bounce()}; //deboucing
+
 int buttonState[8] = {1};
 int lastButtonState[8] = {1};
 int BUTTON_PRESSED = 0;
