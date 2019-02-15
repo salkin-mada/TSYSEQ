@@ -6,7 +6,7 @@ unsigned int ledDelayCounter[8] = {ledDelayTime};
 
 
 void LEDS_startUp() {
-    for(int i = 0; i < 2; ++i) {
+    for(int i = 0; i < 3; ++i) {
         for (int i = 0; i < 8; ++i) {
             digitalWriteFast(muteLeds[i], HIGH);
             delay(20);
@@ -26,13 +26,13 @@ void LEDS_on(unsigned int i) {
     digitalWriteFast(leds[i], HIGH);
 }
 
-void LEDS_off(unsigned int i) {
+void LEDS_off(unsigned int y, unsigned int i) {
     // handle led delay, checking all every cycle, humans are slow.
-    if (flagHasHandledNoteOn[i] == true)
+    if (flagHasHandledNoteOn[y][i] == true)
     {
         if(ledDelayCounter[i]-- == 0) {
             digitalWriteFast(leds[i], LOW);
-            flagHasHandledNoteOn[i] = false;
+            flagHasHandledNoteOn[y][i] = false;
             ledDelayCounter[i] = ledDelayTime;
         }
     }

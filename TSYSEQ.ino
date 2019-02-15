@@ -1,18 +1,16 @@
-
+// hallo
 // at the moment this sequencer incorporates some bad math
 // this gives some interesting counter intuitive results
 
 // todo
-// 1K Resistor on all muteleds
 // resetAmountOfTicks (how many ticks per reset)
 // try responsive analog reading for pots
 
-// lokk into
+// tjek ud!
 // std::random_shuffle
 // PImpl
 // tupedefs
 
-#include <Audio.h>
 #include <Wire.h>
 #include <SerialFlash.h>
 #include <Bounce2.h>
@@ -26,107 +24,76 @@
 
 
 
-// GUItool: begin automatically generated code
-AudioSynthSimpleDrum     drum2;          //xy=152.99999618530273,173.0000228881836
-AudioSynthSimpleDrum     drum1;          //xy=153.22221755981445,138.2222194671631
-AudioSynthSimpleDrum     drum3;          //xy=153.66666412353516,211.00000190734863
-AudioSynthSimpleDrum     drum5;          //xy=155,294
-AudioSynthSimpleDrum     drum4;          //xy=159,254
-AudioSynthSimpleDrum     drum7;          //xy=163,375
-AudioSynthSimpleDrum     drum6;          //xy=165,336
-AudioSynthSimpleDrum     drum8;          //xy=168,431
-AudioMixer4              mixer1;         //xy=442.99998474121094,197.33333206176758
-AudioMixer4              mixer2;         //xy=488.77782440185547,384.2222442626953
-AudioEffectReverb        reverb1;        //xy=579.2222442626953,197.22226333618164
-AudioEffectReverb        reverb2;        //xy=629.1111373901367,383.1111030578613
-AudioMixer4              mixer6;         //xy=957.555606842041,438.3333578109741
-AudioMixer4              mixer5;         //xy=959.5555953979492,366.3333501815796
-AudioMixer4              mixer3;         //xy=964.6666984558105,186.88892364501953
-AudioMixer4              mixer4;         //xy=966.5556221008301,275.33334827423096
-AudioMixer4              mixer7;         //xy=1200.7777862548828,222.2222385406494
-AudioMixer4              mixer8;         //xy=1211.8889656066895,333.55559158325195
-AudioOutputAnalogStereo  dacs1;          //xy=1340.5557174682617,269.3333787918091
-AudioConnection          patchCord1(drum2, 0, mixer2, 0);
-AudioConnection          patchCord2(drum2, 0, mixer5, 1);
-AudioConnection          patchCord3(drum1, 0, mixer1, 0);
-AudioConnection          patchCord4(drum1, 0, mixer3, 1);
-AudioConnection          patchCord5(drum3, 0, mixer1, 1);
-AudioConnection          patchCord6(drum3, 0, mixer3, 2);
-AudioConnection          patchCord7(drum5, 0, mixer1, 2);
-AudioConnection          patchCord8(drum5, 0, mixer3, 3);
-AudioConnection          patchCord9(drum4, 0, mixer2, 1);
-AudioConnection          patchCord10(drum4, 0, mixer5, 2);
-AudioConnection          patchCord11(drum7, 0, mixer1, 3);
-AudioConnection          patchCord12(drum7, 0, mixer4, 0);
-AudioConnection          patchCord13(drum6, 0, mixer2, 2);
-AudioConnection          patchCord14(drum6, 0, mixer5, 3);
-AudioConnection          patchCord15(drum8, 0, mixer2, 3);
-AudioConnection          patchCord16(drum8, 0, mixer6, 0);
-AudioConnection          patchCord17(mixer1, reverb1);
-AudioConnection          patchCord18(mixer2, reverb2);
-AudioConnection          patchCord19(reverb1, 0, mixer3, 0);
-AudioConnection          patchCord20(reverb2, 0, mixer5, 0);
-AudioConnection          patchCord21(mixer6, 0, mixer8, 1);
-AudioConnection          patchCord22(mixer5, 0, mixer8, 0);
-AudioConnection          patchCord23(mixer3, 0, mixer7, 0);
-AudioConnection          patchCord24(mixer4, 0, mixer7, 1);
-AudioConnection          patchCord25(mixer7, 0, dacs1, 0);
-AudioConnection          patchCord26(mixer8, 0, dacs1, 1);
-// GUItool: end automatically generated code
-
-int calculation = 0; // for Serial monitor debugging
+int calculation = 0; // for Serial monitor debugging, math helper
 
 // time guard stuff for quick scope
 unsigned long previousTimeGuard = 0;
 const long timeGuardInterval = 200;
 
-int randomFreq; // ahh so lazy
-int randomLength; // doubleble lazyzy
-int randomSecondMix; //muhaha
-int randomPitchMod; //aargahg lazlazlazzy
-
-// const char *drums[8] = {"drum1", "drum2", "drum3", "drum4", "drum5", "drum6", "drum7", "drum8"};
-//auto drum = AudioSynthSimpleDrum();
-
-int flagAbuttonHaveBeenPressed = 0;
+int flagAbuttonWasPressed = 0;
 
 // seq stuff
 //////////////////
 //////////////////
-//const unsigned int leds[] = {5, 6, 7, 8, 9, 10, 11, 12}; // leds indicating seq activity
-//const unsigned int muteLeds[] = {32, 33, 34, 35, 36, 37, 38, 39}; //leds indicating wether a step is on or off
 
-const unsigned int muteButtons[] = {31, 30, 29, 28, 27, 26, 25, 24};
-// flipped order - convenient for breadboarding
+const unsigned int muteButtons[] = {24, 25, 26, 27, 28, 29, 30, 31};
 Bounce debouncer[8] = {Bounce()}; //deboucing
 
 int buttonState[8] = {1};
 int lastButtonState[8] = {1};
 int BUTTON_PRESSED = 0;
-bool doStep[8] = {true, true, true, true, true, true, true, true};
-bool flagHasHandledNoteOn[8] = {false, false, false, false, false, false, false, false};
+//bool doStep[8] = {true, true, true, true, true, true, true, true};
+//bool flagHasHandledNoteOn[8] = {false, false, false, false, false, false, false, false};
+
+// multi dimensional arrays for track logic (5 tracks)
+bool doStep[5][8] = {
+    {false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false}
+};
+bool flagHasHandledNoteOn[5][8] = {
+    {false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false}
+};
+
+
+// tempo pins
 const unsigned int tempoled = 13;
-const unsigned int tempoOut = 23;
+const unsigned int tempoOut = 23; // used for tempo input to the interrupt pin.
 
-int exINT = 15;
-float exFloat = 1.12345;
-boolean exBoolean = true;
-long exLong = 2123456789;
-//boolean exBooleanArray[8] = {true, true, true, true, true, true, true, true};
+//switch for track selection, 5 tracks in all
+int selectedTrack = 0; // init track is 0, not part of SD_writeSettings yet..
+int lastSelectedtrack = 0;
+const unsigned int switchUpPin = 22;
+const unsigned int switchDownPin = 21;
+Bounce debounceUpTrig = Bounce(); //deboucing
+Bounce debounceDownTrig = Bounce(); //deboucing
+int switchUpTrig;
+int switchUpState = 1;
+int lastSwitchUpState = 1;
+int switchDownTrig;
+int switchDownState = 1;
+int lastSwitchDownState = 1;
 
+// trigger outputs
+const unsigned int pinsTrack[5] = {1,2,3,4,20};
+bool madeTrigFlag[5] = {false,false,false,false,false};
+unsigned int triggerHoldTime = 100;
+unsigned int triggerHoldTimeCounter[5] = {triggerHoldTime}; 
 
-//switch
-//const unsigned int switchUp = 0;
-//const unsigned int switchDown = 1;
-//int switchDownTrig;
-//int switchUpTrig;
 
 int gateNr = 0; //sequencer inits
 const unsigned int gateNrMap[] = {
     0,1,2,3,4,5,6,7,
     0,1,2,3,4,5,6,7,
     0,1,2,3,4,5,6,7,
-    0,1,2,3,4,5,6,7 // max 4 times wrapping. maybe higher is needed.
+    0,1,2,3,4,5,6,7 // max 4 times wrapping. 
+    // maybe higher is needed due to interruptCountToStepReset
 }; // translation map for maximum 16th devisions
 
 // control declarations/definitions
@@ -146,11 +113,11 @@ unsigned int dividendValue;
 unsigned int divisorValue;
 
 // experimental
-int interruptCountToStepResetPot = A5;
+int interruptCountToStepResetPot = A4;
 int interruptCountToStepResetValue;
 
 // internal clock
-int tempoPin = A4;
+int tempoPin = A5;
 float clockbpmtime;
 
 // CV control
@@ -178,44 +145,13 @@ void irqClock() {
 void setup() {
     Serial.begin(9600);
     //Serial.begin(19200);
-    while(!Serial && millis() > 10000) {
+    /*while(!Serial && millis() < 10000) {
         // wait for Serial but if more than 10k millis passed run program
-    };
+    };*/
     
-    AudioMemory(120); // check bench! maybe only 20 needed
-    analogReference(EXTERNAL); // used INTERNAL but now EXT, will be adding some noise but quick fix for proper analog readings
-    
-    // reverb in
-    mixer1.gain(0, 0.3);
-    mixer1.gain(1, 0.3);
-    mixer1.gain(2, 0.3);
-    mixer1.gain(3, 0.3);
-    mixer2.gain(0, 0.3);
-    mixer2.gain(1, 0.3);
-    mixer2.gain(2, 0.3);
-    mixer2.gain(3, 0.3);
-    //reverb mix l og r - wet
-    mixer3.gain(0, 0.5);
-    mixer5.gain(0, 0.5);
-    
-    // dry mix
-    mixer3.gain(1, 2.0);
-    mixer5.gain(1, 0.3);
-    mixer3.gain(2, 0.2);
-    mixer5.gain(2, 0.1);
-    mixer3.gain(3, 1.7);
-    mixer5.gain(3, 0.6);
-    mixer4.gain(0, 0.1);
-    mixer6.gain(0, 0.3);
-    
-    // end l-r mix (direct)
-    mixer7.gain(0, 1);
-    mixer7.gain(1, 1);
-    mixer8.gain(0, 1);
-    mixer8.gain(1, 1);
-    
-    reverb1.reverbTime(1);
-    reverb2.reverbTime(1);
+    analogReference(EXTERNAL); 
+    // used INTERNAL but now EXT, 
+    // will be adding some noise but quick fix for proper analog readings
     
     // seq stuff
     pinMode(pinClock, INPUT);
@@ -224,6 +160,10 @@ void setup() {
     pinMode(tempoPin, INPUT);
     pinMode(tempoled, OUTPUT);
     pinMode(tempoOut, OUTPUT);
+
+    for (int i = 0; i < 5; ++i) {
+        pinMode(pinsTrack[i], OUTPUT);
+    }
     
     for (int i = 0; i < 8; ++i) {
         pinMode(leds[i], OUTPUT);
@@ -237,25 +177,30 @@ void setup() {
     for (int i = 0; i < 8; ++i) {
         pinMode(muteButtons[i], INPUT_PULLUP);
     }
+
+    //track page switch (5 tracks, one for each sds-8 drum)
+    pinMode(switchUpPin, INPUT_PULLUP);
+    pinMode(switchDownPin, INPUT_PULLUP);
+
     // debounce setup
     for (int i = 0; i < 8; ++i) {
         debouncer[i].attach(muteButtons[i]);
         debouncer[i].interval(5);
     }
+
+    debounceUpTrig.attach(switchUpPin);
+    debounceUpTrig.interval(5);
+    debounceDownTrig.attach(switchDownPin);
+    debounceDownTrig.interval(5);
     
-    
-    //Serial.println("iam awake");
-    LEDS_startUp();
-    
-    SD_init();
-    //SD_checkTypeAndListRoot(); // DANGER DANGER
-    //delay(2000);
-    SD_readSettings(); // and apply to program parameters/variables
-    //Serial.println("-----> I MANAGED TO READ SETTINGS AFTER INIT <-----");
-    //apply loaded settings to UI (muteLeds)
+
+
+    //SD_init();
+    //SD_readSettings(); // and apply to program parameters/variables
+
+    //apply loaded settings of selected track to UI (muteLeds)
     for (int i = 0; i < 8; ++i) {
-        //doStep[i] = exBooleanArray[i];
-        if (doStep[i] == true) {
+        if (doStep[selectedTrack][i] == true) {
             digitalWriteFast(muteLeds[i], HIGH);
             Serial.print("init muteLeds");
             Serial.print(i+1);
@@ -265,8 +210,10 @@ void setup() {
             Serial.println("stored steps have been loaded into program");
         }
     }
-    
-    //SD_readAllSettings2Monitor();
+
+    //SD_readAllSettings2Monitor(); // debugging, dump all settings
+
+    LEDS_startUp(); // all set, ready to go
 }
 
 void setStepState(unsigned int i) {
@@ -276,13 +223,13 @@ void setStepState(unsigned int i) {
     
     if(buttonState[i] != lastButtonState[i]) {
         if(buttonState[i] == BUTTON_PRESSED) {
-            flagAbuttonHaveBeenPressed = 1;
-            if(doStep[i] == false) {
-                doStep[i] = true;
+            flagAbuttonWasPressed = 1;
+            if(doStep[selectedTrack][i] == false) {
+                doStep[selectedTrack][i] = true;
                 digitalWriteFast(muteLeds[i], HIGH);
                 //Serial.println("true");
-            } else if(doStep[i] == true){
-                doStep[i] = false;
+            } else if(doStep[selectedTrack][i] == true){
+                doStep[selectedTrack][i] = false;
                 digitalWriteFast(muteLeds[i], LOW);
                 //Serial.println("false");
             }
@@ -291,6 +238,64 @@ void setStepState(unsigned int i) {
             //SD_write(i); // write settings
         }
         lastButtonState[i] = buttonState[i];
+    }
+}
+
+void updateMuteLedsDueToTrackSelection() {
+    //if (selectedTrack != lastSelectedtrack) {
+        for (int i = 0; i < 8; ++i) {
+            if(doStep[selectedTrack][i] == true) {
+                digitalWriteFast(muteLeds[i], HIGH);
+            } else if(doStep[selectedTrack][i] == false){
+                digitalWriteFast(muteLeds[i], LOW);
+            }
+        }
+        lastSelectedtrack = selectedTrack;
+    //}
+}
+
+void checkTriggers(unsigned int i) {
+    for (int y = 0; y < 5; ++y) {
+        if (i == 0 && doStep[y][i] == true) {
+            makeTrigger(y);
+        }
+        if (i == 1 && doStep[y][i] == true) {
+            makeTrigger(y);
+        }
+        if (i == 2 && doStep[y][i] == true) {
+            makeTrigger(y);
+        }
+        if (i == 3 && doStep[y][i] == true) {
+            makeTrigger(y);
+        }
+        if (i == 4 && doStep[y][i] == true) {
+            makeTrigger(y);
+        }
+        if (i == 5 && doStep[y][i] == true) {
+            makeTrigger(y);
+        }
+        if (i == 6 && doStep[y][i] == true) {
+            makeTrigger(y);
+        }
+        if (i == 7 && doStep[y][i] == true) {
+            makeTrigger(y);
+        }
+    }
+}
+
+void makeTrigger(unsigned int i) {
+    digitalWriteFast(pinsTrack[i], HIGH);
+    madeTrigFlag[i] = true;
+}
+
+void triggersOFF(unsigned int i) {
+    if (madeTrigFlag[i] == true)
+    {
+        if(triggerHoldTimeCounter[i]-- == 0) {
+            digitalWriteFast(pinsTrack[i], LOW);
+            madeTrigFlag[i] = false;
+            triggerHoldTimeCounter[i] = triggerHoldTime;
+        }
     }
 }
 
@@ -306,55 +311,114 @@ void setStepState(unsigned int i) {
     }
 }  */
 
+// should it beswitch case logic baby?
 void handleNoteOn(unsigned int i) {
-    if (i == 0 && doStep[i] == true) {
+    if (i == 0 && doStep[selectedTrack][i] == true) {
         LEDS_on(i);
         // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[i] = true;
-        drum1.noteOn();
+        flagHasHandledNoteOn[selectedTrack][i] = true;
     }
-    if (i == 1 && doStep[i] == true) {
+    if (i == 1 && doStep[selectedTrack][i] == true) {
         LEDS_on(i);
         // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[i] = true;
-        drum2.noteOn();
+        flagHasHandledNoteOn[selectedTrack][i] = true;
     }
-    if (i == 2 && doStep[i] == true) {
+    if (i == 2 && doStep[selectedTrack][i] == true) {
         LEDS_on(i);
         // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[i] = true;
-        drum3.noteOn();
+        flagHasHandledNoteOn[selectedTrack][i] = true;
     }
-    if (i == 3 && doStep[i] == true) {
+    if (i == 3 && doStep[selectedTrack][i] == true) {
         LEDS_on(i);
         // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[i] = true;
-        drum4.noteOn();
+        flagHasHandledNoteOn[selectedTrack][i] = true;
     }
-    if (i == 4 && doStep[i] == true) {
+    if (i == 4 && doStep[selectedTrack][i] == true) {
         LEDS_on(i);
         // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[i] = true;
-        drum5.noteOn();
+        flagHasHandledNoteOn[selectedTrack][i] = true;
     }
-    if (i == 5 && doStep[i] == true) {
+    if (i == 5 && doStep[selectedTrack][i] == true) {
         LEDS_on(i);
         // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[i] = true;
-        drum6.noteOn();
+        flagHasHandledNoteOn[selectedTrack][i] = true;
     }
-    if (i == 6 && doStep[i] == true) {
+    if (i == 6 && doStep[selectedTrack][i] == true) {
         LEDS_on(i);
         // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[i] = true;
-        drum7.noteOn();
+        flagHasHandledNoteOn[selectedTrack][i] = true;
     }
-    if (i == 7 && doStep[i] == true) {
+    if (i == 7 && doStep[selectedTrack][i] == true) {
         LEDS_on(i);
         // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[i] = true;
-        drum8.noteOn();
+        flagHasHandledNoteOn[selectedTrack][i] = true;
     } 
+}
+
+
+void trackSelect() {
+    debounceUpTrig.update();
+    debounceDownTrig.update();
+    switchUpState = debounceUpTrig.read();
+    switchDownState = debounceDownTrig.read();
+    
+    if(switchUpState != lastSwitchUpState) {
+        if(switchUpState == BUTTON_PRESSED) {
+            Serial.println("track UP");
+            switch(selectedTrack) {
+                case 0:
+                selectedTrack = 1;
+                break;
+                case 1:
+                selectedTrack = 2;
+                break;
+                case 2:
+                selectedTrack = 3;
+                break;
+                case 3:
+                selectedTrack = 4;
+                break;
+                case 4:
+                selectedTrack = 0;
+                break;
+                default:
+                selectedTrack = 0; //back to init if needed
+                break;
+            }
+            Serial.print("selectedTrack: ");
+            Serial.println(selectedTrack);
+        }
+        lastSwitchUpState = switchUpState;
+    }
+
+    if(switchDownState != lastSwitchDownState) {
+        if(switchDownState == BUTTON_PRESSED) {
+            Serial.println("track DOWN");
+            switch(selectedTrack) {
+                case 0:
+                selectedTrack = 4;
+                break;
+                case 1:
+                selectedTrack = 0;
+                break;
+                case 2:
+                selectedTrack = 1;
+                break;
+                case 3:
+                selectedTrack = 2;
+                break;
+                case 4:
+                selectedTrack = 3;
+                break;
+                default:
+                selectedTrack = 0; //back to init if needed
+                break;
+            }
+            Serial.print("selectedTrack: ");
+            Serial.println(selectedTrack);
+        }
+        lastSwitchDownState = switchDownState;
+    }
 }
 
 
@@ -370,15 +434,13 @@ void loop() {
     // internal clock
     elapsedMicros clocktime;
     
-    
-    
     //quick scope
     while (1) {
         // time guard for quick scope
         unsigned long currentTimeGuard = millis();   
         
         clockbpmtime = analogRead(tempoPin); // try responsive version?
-        clockbpmtime = map(clockbpmtime, 22, 1023, 4000000, 200000);
+        clockbpmtime = map(clockbpmtime, 0, 1023, 4000000, 100000); // det var 4e6, 2e5
         
         //internal clock hack
         if (clocktime >= clockbpmtime) {
@@ -425,12 +487,17 @@ void loop() {
 
         float fraction = 1.0 / (dividendValue / divisorValue);
         
+        //track selector
+        trackSelect();
+        updateMuteLedsDueToTrackSelection();
         
         // check if steps are on or off
         for (int i = 0; i < 8; ++i) {
             setStepState(i);
-            SD_writeSettings(i);
-            flagAbuttonHaveBeenPressed = 0; // burde denne være inde i SD_writeSettings
+            //SD_writeSettings(i);
+            flagAbuttonWasPressed = 0; // burde denne være inde i SD_writeSettings?
+            // uanset så er det safety measures at sætte den til 0 hele tiden.
+            // så skrives der kun én gang per knaptryk
         }
         
         //tracker
@@ -440,16 +507,13 @@ void loop() {
             microtime = 0;
             microbeattime = 0;
             flag = false;
-
-            
             
             //extended "sync" part of tracking
+            // hvor mange clicks der skal til før at sekvensen resettes
             if (interruptCountToStepReset >= interruptCountToStepResetValue) {
                 resettracker = true;
                 gateNr = seqStartValue;
-                Serial.println("¤¤¤¤¤¤¤¤¤¤");
-                Serial.println("¤¤¤¤¤¤¤¤¤¤");
-                Serial.println("step reset");
+                //Serial.println("¤_STEP_RESET_¤");
                 interruptCountToStepReset = 0;
             }
             //gateNr = seqStartValue;
@@ -457,7 +521,7 @@ void loop() {
             // fraction kan bruges i en funktion sådan at det kan
             // kontrolleres hvor ofte sequenceren sætter seqStartValue til gateNr
             // men der bliver jo tænkt lidt anderldes om dette i seq delen nedenunder .
-            // if gate er større end endvalue set gate til seqstartvalue
+            // if gate er større end end value set gate til seqstartvalue
 
             interruptCountToStepReset++;
         }
@@ -465,16 +529,17 @@ void loop() {
         //sequencer
         if (microbeattime >= t1 || resettracker) {
             
-            /* length of seq
+            /* length of seq, old
             if(gateNr >= seqEndValue) {
                 gateNr = seqStartValue;
-            } */
-            
+            }*/
+            // length of seq, new turn
             if(gateNr >= 1 + seqEndValue + constrain((devisionValue - 8), 0, 8) ) {
-                gateNr = seqStartValue; // trying to control wierd foldback/over behavior
+                gateNr = seqStartValue; // trying to control wierd fold-back/over behavior
             }
             
-            Serial.print("###########");
+            // debugging
+            /*Serial.print("###########");
             Serial.println("___________");
             Serial.print("seqStartValue: ");
             Serial.println(seqStartValue);
@@ -496,78 +561,30 @@ void loop() {
             Serial.println(dividendValue);
             Serial.print("divisorValue (slower): ");
             Serial.println(divisorValue);
+            */
 
-            
-            // sounds      
-            randomFreq = random(0, 20);
-            randomLength = random(20, 100);
-            randomSecondMix = random(0, 100);
-            randomPitchMod = random(0, 100);
-            
-            // settings for drums
-            if(gateNrMap[gateNr] == 0){
-                drum1.frequency(70);
-                drum1.length((randomLength/2)*10);
-                drum1.secondMix(randomSecondMix/100);
-                drum1.pitchMod(0.6);
-            }
-            if(gateNrMap[gateNr] == 1){
-                drum2.frequency(1000+randomFreq);
-                drum2.length(randomLength/6);
-                drum2.secondMix(0);
-                drum2.pitchMod(0.9);
-            }
-            if(gateNrMap[gateNr] == 2){
-                drum3.frequency(randomFreq*200);
-                drum3.length(randomLength/2);
-                drum3.secondMix(0);
-                drum3.pitchMod(0.5);
-            }
-            if(gateNrMap[gateNr] == 3){
-                drum4.frequency(5000);
-                drum4.length(randomLength/3);
-                drum4.secondMix(0);
-                drum4.pitchMod(0.45);
-            }
-            if(gateNrMap[gateNr] == 4){
-                drum5.frequency(150+randomFreq);
-                drum5.length(randomLength*2);
-                drum5.secondMix(0);
-                drum5.pitchMod(0.5);
-            }
-            if(gateNrMap[gateNr] == 5){
-                drum6.frequency(120);
-                drum6.length(randomLength/2);
-                drum6.secondMix(randomSecondMix/100);
-                drum6.pitchMod(0.7);
-            }
-            if(gateNrMap[gateNr] == 6){
-                drum7.frequency(9000+randomFreq);
-                drum7.length(randomLength/2);
-                drum7.secondMix(randomSecondMix/100);
-                drum7.pitchMod(0.2);
-            }
-            if(gateNrMap[gateNr] == 7){
-                drum8.frequency(1900);
-                drum8.length(randomLength/4);
-                drum8.secondMix(randomSecondMix/100);
-                drum8.pitchMod(0.3);
-            }
             
             // noteOn
             // make step
-            handleNoteOn(gateNrMap[gateNr]);
-            
+            handleNoteOn(gateNrMap[gateNr]); // led handling and flag
+            checkTriggers(gateNrMap[gateNr]); // send trigs out
+
             // seq
             ++gateNr;
             microbeattime = 0;
             resettracker = false;
         }
+
+        // checking the state of all triggers every cycle, humans are slow
+        // handling TRIGGER "on" time
+        for (int i = 0; i < 5; ++i){
+            triggersOFF(i);
+        }
         
-        // checking all every cycle, humans are slow
+        // checking the state of all leds every cycle, humans are slow
+        // handling LED "on" time
         for (int i = 0; i < 8; ++i){
-            //handleLedDelay(i);
-            LEDS_off(i);   
+            LEDS_off(selectedTrack, i);   
         }
         
         // debugg serial print delay

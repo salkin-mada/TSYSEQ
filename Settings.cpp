@@ -1,7 +1,7 @@
 #include "Settings.h"
 #include <Arduino.h>
 
-String settingValueArray[8];
+String settingValueArray[5][8];
 bool flagSettingsHaveBeenRead = false;
 
 
@@ -50,8 +50,10 @@ void SD_init() {
         }
     } */
     // make sure settingValueArray is doStep incase not settingsfile exists
-    for (int i = 0; i < 8; ++i) {
-        settingValueArray[i] = doStep[i];    
+    for (int y = 0; y < 5; ++y) {
+        for (int i = 0; i < 8; ++i) {
+            settingValueArray[y][i] = doStep[y][i];    
+        }
     }
     
     delay(200);
@@ -137,7 +139,7 @@ void SD_readSettings(){
         String settingValue;
         
         recallFile = SD.open("settings.txt", FILE_READ);
-        if (recallFile) {int i = 0;
+        if (recallFile) {int i = 0; int y = 0;
             while (recallFile.available()) {
                 character = recallFile.read();
                 while((recallFile.available()) && (character != '[')){
@@ -171,40 +173,26 @@ void SD_readSettings(){
                             character = recallFile.read();
                             // Serial.println("i found a ,");
                             // Serial.println(settingValue);
-                            settingValueArray[i] = settingValue;
+                            settingValueArray[y][i] = settingValue;
                             //reset string
                             settingValue = "";
                             ++i;
+                            // here follows super hack for iterating correctly to settingValueArray[>-<][]
+                            if(i == 8) {y = 1;}
+                            if(i == 16) {y = 2;}
+                            if(i == 24) {y = 3;}
+                            if(i == 32) {y = 4;}
                         }
                     }
                     if (character == '}') {
                         character = recallFile.read();
                         // Serial.println("i found a }");
                         // Serial.println(settingValue);
-                        settingValueArray[i] = settingValue;
+                        settingValueArray[y][i] = settingValue;
                     }
                 }
                 
-                if(character == ']'){
-                    
-                    //Debugging
-                    /* if (settingName != "doStep") {
-                        Serial.print("Name:");
-                        Serial.println(settingName);
-                        Serial.print("Value :");
-                        Serial.println(settingValue);
-                    }
-                    
-                    if (settingName == "doStep") {
-                        for (int j = 0; j < 8; ++j) {
-                            Serial.print("settingValueArray: ");
-                            Serial.println(settingValueArray[j]);
-                            Serial.print("doStep: ");
-                            Serial.println(doStep[j]);
-                            
-                        }
-                    } */ // debugging end
-                    
+                if(character == ']'){ // means end of settings
                     // Apply the value to the parameter
                     flagSettingsHaveBeenRead = true;
                     applySetting(settingName,settingValue);
@@ -231,7 +219,8 @@ void SD_readSettings(){
 
 void applySetting(String settingName, String settingValue) {
     if (flagSettingsHaveBeenRead == true) {
-        if(settingName == "exINT") {
+        // examples
+        /*if(settingName == "exINT") {
             exINT=settingValue.toInt();
         }
         if(settingName == "exFloat") {
@@ -242,18 +231,23 @@ void applySetting(String settingName, String settingValue) {
         }
         if(settingName == "exLong") {
             exLong=toLong(settingValue);
-        }
+        }*/
+        //examples end
         if(settingName == "doStep") {
-            for (unsigned int i = 0; i < 8; ++i) {
-                doStep[i] = toBoolean(settingValueArray[i]);
+            for (int y = 0; y < 5; ++y) {
+                for (unsigned int i = 0; i < 8; ++i) {
+                    doStep[y][i] = toBoolean(settingValueArray[y][i]);
+                }
             }
-            Serial.println("after apllying toBoolean(settingValueArray[i]) --> doStep[i]");
-            for (int j = 0; j < 8; ++j) {
-                Serial.print("settingValueArray: ");
-                Serial.println(settingValueArray[j]);
-                Serial.print("doStep: ");
-                Serial.println(doStep[j]);
-            }
+            /*Serial.println("after apllying toBoolean(settingValueArray[][]) --> doStep[][]");
+            for (int k = 0; k < 5; ++k) {
+                for (int j = 0; j < 8; ++j) {
+                    Serial.print("settingValueArray: ");
+                    Serial.println(settingValueArray[k][j]);
+                    Serial.print("doStep: ");
+                    Serial.println(doStep[k][j]);
+                }
+            }*/
             /* Apply the value to the parameter by searching for the parameter name
             Using String.toInt(); for Integers
             toFloat(string); for Float
@@ -272,7 +266,7 @@ void applySetting(String settingName, String settingValue) {
 /* ################################ SETTINGS ################################# */
 void SD_writeSettings(unsigned int i) {
     
-    if (flagAbuttonHaveBeenPressed == 1) {
+    if (flagAbuttonWasPressed == 1) {int y = 0;
         
             Serial.println("__________ something changed");
             
@@ -283,36 +277,48 @@ void SD_writeSettings(unsigned int i) {
             }
             // Create a fresh empty one
             recallFile = SD.open("settings.txt", FILE_WRITE);
-            
-            recallFile.print("[");
-            recallFile.print("exINT=");
-            recallFile.print(exINT);
-            recallFile.println("]");
-            recallFile.print("[");
-            recallFile.print("exFloat=");
-            recallFile.print(exFloat,5);
-            recallFile.println("]");
-            recallFile.print("[");
-            recallFile.print("exBoolean=");
-            recallFile.print(exBoolean);
-            recallFile.println("]");
-            recallFile.print("[");
-            recallFile.print("exLong=");
-            recallFile.print(exLong);
-            recallFile.println("]");
-            recallFile.print("[");
+            Serial.println("SD.open");
+
+            // write to recall file          
+            recallFile.print("["); // beginning of a setting type
             recallFile.print("doStep=");
-            recallFile.print("{");
-            for (int k = 0; k < 8; ++k) {
-                recallFile.print(doStep[k]);
-                if (k < 7) {
-                    recallFile.print(",");
+            recallFile.print("{"); // begin list
+                for (int k = 0; k < 40; ++k) {
+
+                    //track 1
+                    if (k < 8) {
+                         y = 0;
+                    }
+                    //track 2
+                    if ((k > 7) && (k < 16)) {
+                         y = 1;
+                    }
+                    //track 3
+                    if ((k > 15) && (k < 24)) {
+                         y = 2;
+                    }
+                    //track 4
+                    if ((k > 23) && (k < 32)) {
+                         y = 3;
+                    }
+                    //track 5
+                    if ((k > 31) && (k < 40)) {
+                         y = 4;
+                    }
+                    
+                    recallFile.print(doStep[y][k]); // fail?
+                    //recallFile.print("true"); // something else, save as all on.. hack
+
+                    if (k < 39) {
+                        recallFile.print(",");
+                    }
+                    
+                    if (k == 39) { // end of list
+                        recallFile.print("}");
+                    }
                 }
-                if (k == 7) {
-                    recallFile.print("}");
-                }
-            }
-            recallFile.println("]");
+            
+            recallFile.println("]"); // end of a setting type
             
             Serial.println("settings created");
             //
@@ -320,11 +326,11 @@ void SD_writeSettings(unsigned int i) {
             // close the file:
             recallFile.close();
             Serial.println("############# Writing done and file closed.");
-            for (int j = 0; j < 8; ++j) {
-                settingValueArray[i] = doStep[i];                
-            }
+            
+            settingValueArray[y][i] = doStep[y][i];
     }
 }
+
 
 void SD_readAllSettings2Monitor() {
     if (SD.exists("settings.txt")) {
