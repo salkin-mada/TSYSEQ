@@ -1,9 +1,9 @@
 # TSEQ SDS8
 
 A teensy based step sequencer made for the Simmons sds8
-- with margin/rotation logic and clock multiplier/divider specially
+- with margin/rotation logic and clock multiplier/divider
 
-version is from **workshop NMH, february 2019**
+latest version is from **workshop NMH, february 2019**
 
 
 ## notes
