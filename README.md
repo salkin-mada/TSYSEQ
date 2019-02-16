@@ -17,28 +17,11 @@ todo:
 
 ![TSYSEQ](images/TSEQ.jpg "skeem")
 
-```mermaid
-sequenceDiagram
-seqS ->> seqE: length
-seqE->> Offset: tilt
-Offset--x seqS: related
-resetCount-x seqS: step+seqS+Offset 
-resetCount--x fraction: bug
-Note right of Offset: margin factor is off
-```
+![TSYSEQ](images/mermaid1.jpg "dia")
 
 crude flow:
+![TSYSEQ](images/mermaid2.jpg "flo")
 
-```mermaid
-graph LR
-A[interrupt] -- micros --> B((step allocator))
-A --> C(offset)
-B --> D{triggers}
-C --> D
-C --> B
-C --> E
-E(counter)-- fraction --> B
-```
 --> [sds 8 manual](https://www.simmonsmuseum.com/?area=downloads&download_id=120)
 
 ![TSYSEQ](images/pict.jpg "workshop")
