@@ -15,7 +15,7 @@ todo:
 - IIII: add reverse traverser state for seq
 - IIIII: introduces step skipping factor (bipolar in steps- add rand)
 
-![TSYSEQ](images/TSEQ.pdf "skeem")
+![TSYSEQ](images/TSEQ.jpg "skeem")
 
 ```mermaid
 sequenceDiagram
