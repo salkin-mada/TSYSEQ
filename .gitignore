@@ -1,0 +1,6 @@
+# ignore DS store
+.DS_Store
+# ignore logs
+*.log
+# ignore vscode
+.vscode
