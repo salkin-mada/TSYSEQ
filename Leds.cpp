@@ -22,6 +22,19 @@ void LEDS_startUp() {
     }
 }
 
+void LEDS_sdCardInitFailed() {
+    for(int i = 0; i < 20; ++i) {
+        for (int i = 0; i < 8; ++i) {
+            digitalWriteFast(muteLeds[i], HIGH);
+        }
+        delay(250);
+        for (int i = 0; i < 8; ++i) {
+            digitalWriteFast(muteLeds[i], LOW);
+        }
+        delay(250);
+    }
+}
+
 void LEDS_on(unsigned int i) {
     digitalWriteFast(leds[i], HIGH);
 }

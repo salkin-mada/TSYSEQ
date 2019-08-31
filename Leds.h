@@ -9,6 +9,7 @@ extern bool flagHasHandledNoteOn[5][8];
 void LEDS_startUp();
 void LEDS_on(unsigned int i);
 void LEDS_off(unsigned int y, unsigned int i);
+void LEDS_sdCardInitFailed();
 // class Leds
 // {
 // 	public:

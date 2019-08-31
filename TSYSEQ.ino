@@ -22,7 +22,7 @@
 #include "Settings.h"
 #include "Leds.h"
 
-
+extern bool debug;
 
 int calculation = 0; // for Serial monitor debugging, math helper
 
@@ -36,14 +36,16 @@ int flagAbuttonWasPressed = 0;
 //////////////////
 //////////////////
 
+// layout
+unsigned int stepCount = 8;
+unsigned int trackCount = 5;
+
 const unsigned int muteButtons[] = {24, 25, 26, 27, 28, 29, 30, 31};
 Bounce debouncer[8] = {Bounce()}; //deboucing
 
 int buttonState[8] = {1};
 int lastButtonState[8] = {1};
 int BUTTON_PRESSED = 0;
-//bool doStep[8] = {true, true, true, true, true, true, true, true};
-//bool flagHasHandledNoteOn[8] = {false, false, false, false, false, false, false, false};
 
 // multi dimensional arrays for track logic (5 tracks)
 bool doStep[5][8] = {
@@ -81,7 +83,7 @@ int switchDownState = 1;
 int lastSwitchDownState = 1;
 
 // trigger outputs
-const unsigned int pinsTrack[5] = {1,2,3,4,20};
+const unsigned int pinsTrack[5] = {1,2,3,4,20}; // track outputs, going to voltage devider and jack out
 bool madeTrigFlag[5] = {false,false,false,false,false};
 unsigned int triggerHoldTime = 100;
 unsigned int triggerHoldTimeCounter[5] = {triggerHoldTime}; 
@@ -145,9 +147,9 @@ void irqClock() {
 void setup() {
     Serial.begin(9600);
     //Serial.begin(19200);
-    /*while(!Serial && millis() < 10000) {
-        // wait for Serial but if more than 10k millis passed run program
-    };*/
+    while(!Serial && millis() < 5000) {
+        // wait for Serial but if more than 5k millis passed run program
+    };
     
     analogReference(EXTERNAL); 
     // used INTERNAL but now EXT, 
@@ -161,20 +163,20 @@ void setup() {
     pinMode(tempoled, OUTPUT);
     pinMode(tempoOut, OUTPUT);
 
-    for (int i = 0; i < 5; ++i) {
+    for (unsigned int i = 0; i < trackCount; ++i) {
         pinMode(pinsTrack[i], OUTPUT);
     }
     
-    for (int i = 0; i < 8; ++i) {
+    for (unsigned int i = 0; i < stepCount; ++i) {
         pinMode(leds[i], OUTPUT);
     }
     
-    for (int i = 0; i < 8; ++i) {
+    for (unsigned int i = 0; i < stepCount; ++i) {
         pinMode(muteLeds[i], OUTPUT);
     }
     
     // Pullup for mute pins
-    for (int i = 0; i < 8; ++i) {
+    for (unsigned int i = 0; i < stepCount; ++i) {
         pinMode(muteButtons[i], INPUT_PULLUP);
     }
 
@@ -183,7 +185,7 @@ void setup() {
     pinMode(switchDownPin, INPUT_PULLUP);
 
     // debounce setup
-    for (int i = 0; i < 8; ++i) {
+    for (unsigned int i = 0; i < stepCount; ++i) {
         debouncer[i].attach(muteButtons[i]);
         debouncer[i].interval(5);
     }
@@ -194,24 +196,29 @@ void setup() {
     debounceDownTrig.interval(5);
     
 
-
-    //SD_init();
-    //SD_readSettings(); // and apply to program parameters/variables
+    SD_init();
+    SD_readSettings(); // and apply to program parameters/variables
 
     //apply loaded settings of selected track to UI (muteLeds)
-    for (int i = 0; i < 8; ++i) {
+    for (unsigned int i = 0; i < stepCount; ++i) {
         if (doStep[selectedTrack][i] == true) {
             digitalWriteFast(muteLeds[i], HIGH);
-            Serial.print("init muteLeds");
-            Serial.print(i+1);
-            Serial.println(" ON");
+            if (debug) {
+                Serial.print("init muteLeds");
+                Serial.print(i+1);
+                Serial.println(" ON");
+            }
         }
-        if (i == 7) {
-            Serial.println("stored steps have been loaded into program");
+        if (debug) {
+            if (i == (stepCount-1) ) {
+                Serial.println("stored steps have been loaded into program");
+            }
         }
     }
 
-    //SD_readAllSettings2Monitor(); // debugging, dump all settings
+    if (debug) {
+        SD_readAllSettings2Monitor(); // debugging, dump all settings
+    }
 
     LEDS_startUp(); // all set, ready to go
 }
@@ -364,7 +371,9 @@ void trackSelect() {
     
     if(switchUpState != lastSwitchUpState) {
         if(switchUpState == BUTTON_PRESSED) {
-            Serial.println("track UP");
+            if (debug) {
+                Serial.println("track UP");
+            }
             switch(selectedTrack) {
                 case 0:
                 selectedTrack = 1;
@@ -385,15 +394,21 @@ void trackSelect() {
                 selectedTrack = 0; //back to init if needed
                 break;
             }
-            Serial.print("selectedTrack: ");
-            Serial.println(selectedTrack);
+            
+            if (debug) {
+                Serial.print("selectedTrack: ");
+                Serial.println(selectedTrack);
+            }
+            
         }
         lastSwitchUpState = switchUpState;
     }
 
     if(switchDownState != lastSwitchDownState) {
         if(switchDownState == BUTTON_PRESSED) {
-            Serial.println("track DOWN");
+            if (debug) {
+                Serial.println("track DOWN");
+            }
             switch(selectedTrack) {
                 case 0:
                 selectedTrack = 4;
@@ -411,11 +426,13 @@ void trackSelect() {
                 selectedTrack = 3;
                 break;
                 default:
-                selectedTrack = 0; //back to init if needed
+                selectedTrack = 0; //back to init if needed, aka wrapper
                 break;
             }
-            Serial.print("selectedTrack: ");
-            Serial.println(selectedTrack);
+            if (debug) {
+                Serial.print("selectedTrack: ");
+                Serial.println(selectedTrack);
+            }
         }
         lastSwitchDownState = switchDownState;
     }
@@ -440,7 +457,7 @@ void loop() {
         unsigned long currentTimeGuard = millis();   
         
         clockbpmtime = analogRead(tempoPin); // try responsive version?
-        clockbpmtime = map(clockbpmtime, 0, 1023, 4000000, 100000); // det var 4e6, 2e5
+        clockbpmtime = map(clockbpmtime, 0, 1023, 6000000, 100000); // det var 4e6, 2e5
         
         //internal clock hack
         if (clocktime >= clockbpmtime) {
@@ -451,7 +468,6 @@ void loop() {
             digitalWriteFast(tempoOut, LOW);
             clocktime = 0;
         }
-        
         
         //seq controls
         // read knobs
@@ -494,7 +510,7 @@ void loop() {
         // check if steps are on or off
         for (int i = 0; i < 8; ++i) {
             setStepState(i);
-            //SD_writeSettings(i);
+            SD_writeSettings(i);
             flagAbuttonWasPressed = 0; // burde denne være inde i SD_writeSettings?
             // uanset så er det safety measures at sætte den til 0 hele tiden.
             // så skrives der kun én gang per knaptryk
