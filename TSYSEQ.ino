@@ -6,7 +6,7 @@
 // resetAmountOfTicks (how many ticks per reset)
 // try responsive analog reading for pots
 
-// tjek ud!
+
 // std::random_shuffle
 // PImpl
 // tupedefs
@@ -84,6 +84,8 @@ int lastSwitchDownState = 1;
 
 // trigger outputs
 const unsigned int pinsTrack[5] = {1,2,3,4,20}; // track outputs, going to voltage devider and jack out
+unsigned int trackStepIterationtrigDevider[5] = {1,3,2,8,6};
+unsigned int trackStepIterationClockCounter[5] = {1,1,1,1,1}; // they iterate from 1
 bool madeTrigFlag[5] = {false,false,false,false,false};
 unsigned int triggerHoldTime = 100;
 unsigned int triggerHoldTimeCounter[5] = {triggerHoldTime}; 
@@ -249,7 +251,7 @@ void setStepState(unsigned int i) {
 }
 
 void updateMuteLedsDueToTrackSelection() {
-    //if (selectedTrack != lastSelectedtrack) {
+    //if (selectedTrack != lastSelectedtrack) { // breaks something
         for (int i = 0; i < 8; ++i) {
             if(doStep[selectedTrack][i] == true) {
                 digitalWriteFast(muteLeds[i], HIGH);
@@ -261,32 +263,53 @@ void updateMuteLedsDueToTrackSelection() {
     //}
 }
 
-void checkTriggers(unsigned int i) {
-    for (int y = 0; y < 5; ++y) {
-        if (i == 0 && doStep[y][i] == true) {
-            makeTrigger(y);
+void checkTriggers(unsigned int step) {
+    // check all tracks
+    for (unsigned int track = 0; track < 5; ++track) {
+        // new, hhm counting what math, hard.. hmm
+        if (doStep[track][step] == true) {
+            
+            if (trackStepIterationtrigDevider[track] == trackStepIterationClockCounter[track]) {
+                makeTrigger(track);
+                
+            }
+            
+            // iterate
+            trackStepIterationClockCounter[track]++;
+            
+            // if counter is bigger than set trigDevider 
+            if (trackStepIterationClockCounter[track] > trackStepIterationtrigDevider[track]) {
+                //reset counter for track
+                trackStepIterationClockCounter[track] = 1;
+            }
+            
         }
-        if (i == 1 && doStep[y][i] == true) {
-            makeTrigger(y);
-        }
-        if (i == 2 && doStep[y][i] == true) {
-            makeTrigger(y);
-        }
-        if (i == 3 && doStep[y][i] == true) {
-            makeTrigger(y);
-        }
-        if (i == 4 && doStep[y][i] == true) {
-            makeTrigger(y);
-        }
-        if (i == 5 && doStep[y][i] == true) {
-            makeTrigger(y);
-        }
-        if (i == 6 && doStep[y][i] == true) {
-            makeTrigger(y);
-        }
-        if (i == 7 && doStep[y][i] == true) {
-            makeTrigger(y);
-        }
+
+        // old sheise
+        // if (i == 0 && doStep[y][i] == true) {
+        //     makeTrigger(y);
+        // }
+        // if (i == 1 && doStep[y][i] == true) {
+        //     makeTrigger(y);
+        // }
+        // if (i == 2 && doStep[y][i] == true) {
+        //     makeTrigger(y);
+        // }
+        // if (i == 3 && doStep[y][i] == true) {
+        //     makeTrigger(y);
+        // }
+        // if (i == 4 && doStep[y][i] == true) {
+        //     makeTrigger(y);
+        // }
+        // if (i == 5 && doStep[y][i] == true) {
+        //     makeTrigger(y);
+        // }
+        // if (i == 6 && doStep[y][i] == true) {
+        //     makeTrigger(y);
+        // }
+        // if (i == 7 && doStep[y][i] == true) {
+        //     makeTrigger(y);
+        // }
     }
 }
 
@@ -318,7 +341,7 @@ void triggersOFF(unsigned int i) {
     }
 }  */
 
-// should it beswitch case logic baby?
+// should it be switch case logic baby?
 void handleNoteOn(unsigned int i) {
     if (i == 0 && doStep[selectedTrack][i] == true) {
         LEDS_on(i);
@@ -434,6 +457,7 @@ void trackSelect() {
                 Serial.println(selectedTrack);
             }
         }
+        // note: used for wrapper?
         lastSwitchDownState = switchDownState;
     }
 }
@@ -463,7 +487,7 @@ void loop() {
         if (clocktime >= clockbpmtime) {
             digitalWriteFast(tempoled, HIGH);
             digitalWriteFast(tempoOut, HIGH);
-            delay(1); // remove delay with nice counter delay
+            delay(1); // remove delay with nice counter delay, like on the step leds
             digitalWriteFast(tempoled, LOW);
             digitalWriteFast(tempoOut, LOW);
             clocktime = 0;
@@ -480,28 +504,40 @@ void loop() {
         seqStartValue = constrain(map(seqStartValue, 0, 1010, 0, 7), 0, 7);
         seqEndValue = constrain(map(seqEndValue, 0, 850, 0, 7), 0, 7);
         seqOffsetValue = map(seqOffsetValue, 0, 1000, 0, 7);
-        interruptCountToStepResetValue = map(interruptCountToStepResetValue, 90, 1023, 1, 8);
-        
         devisionValue = map(devisionValue, 90, 1023, 1, 16);
+        interruptCountToStepResetValue = map(interruptCountToStepResetValue, 90, 1023, 1, 16);
         
         // Offset into ->> seqStart and seqEnd
         seqStartValue = seqStartValue+seqOffsetValue;
         seqEndValue = seqEndValue+seqOffsetValue;
-        
+
+
+        /* ############################################################# */
+        /* ######################## FRACTION ########################## */
+        /* ############################################################# */
+
         // control af fraction
-        // old one
-        //float fraction = 1.0/devisionValue;
+        float fraction = 1.0/devisionValue;
+        // also interesting devident devider attitude
+       // float fraction = 4.0/devisionValue;
         
-        // new one
+        // oldest one, first
+        //float fraction = 1.0/devisionValue;
+
+        // second attempt
         // dividend (faster)
-        dividendValue = analogRead(devisionPot);
-        dividendValue = constrain(map(dividendValue, 550, 1023, 1, 16), 1, 16);
+        // dividendValue = analogRead(devisionPot);
+        // dividendValue = constrain(map(dividendValue, 550, 1023, 1, 16), 1, 16);
 
-        // devisor (slower)
-        divisorValue = analogRead(devisionPot);
-        divisorValue = constrain(map(divisorValue, 90, 450, 16, 1), 1, 16);
+        // // devisor (slower)
+        // divisorValue = analogRead(devisionPot);
+        // divisorValue = constrain(map(divisorValue, 90, 450, 16, 1), 1, 16);
 
-        float fraction = 1.0 / (dividendValue / divisorValue);
+        // float fraction = 1.0 / (dividendValue / divisorValue);
+
+        /* ############################################################# */
+        /* ############################################################# */
+        /* ############################################################# */
         
         //track selector
         trackSelect();
@@ -581,7 +617,7 @@ void loop() {
 
             
             // noteOn
-            // make step
+            // make step --> also here to implement probability, if (bla bla)
             handleNoteOn(gateNrMap[gateNr]); // led handling and flag
             checkTriggers(gateNrMap[gateNr]); // send trigs out
 
