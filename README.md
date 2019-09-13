@@ -1,14 +1,15 @@
 # TSEQ SDS8
 
 A teensy based step sequencer made for the Simmons sds8
+
 - with margin/rotation logic and clock multiplier/divider
 
 latest version is from **workshop NMH, february 2019**
 
-
 ## notes
 
 todo:
+
 - l : voltage clamp on inputs
 - II : reverse polar protect on outputs
 - III : use linear B pots instead og log A

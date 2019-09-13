@@ -5,12 +5,12 @@
 
 bool flagSettingsHaveBeenRead = false;
 
-bool debug = false; // serial monitor debug modus, should be dependant on serial modus (which yet is to be implemented)
+bool debug = true; // serial monitor debug modus, should be dependant on serial modus (which yet is to be implemented)
 bool deleteSettingsFile = false; // set to true if settings.txt is "corrupted"
 
 
 // placeholder for doStep data
-String settingValueArray[5][8];
+String settingValueArray[5][16];
 
 // converting string to Float
 float toFloat(String settingValue){
@@ -65,13 +65,14 @@ void SD_init() {
     
 
     // make sure settingValueArray is doStep in case no settingsfile exists
+    // this is a pre sd read thingy
     for (unsigned int y = 0; y < trackCount; ++y) {
         for (unsigned int i = 0; i < stepCount; ++i) {
             settingValueArray[y][i] = doStep[y][i];    
         }
     }
     
-    delay(200);
+    delay(200); // sd chill
 }
 
 /* ################################## READ ################################### */
@@ -180,11 +181,11 @@ void SD_readSettings(){
                             // here follows super hack for iterating correctly to settingValueArray[>-<][]
                             // five independant tracks but stored in .txt as one long list
 
-                            if(i < 8) {} // no need to update y (track#)
-                            if(i == 8) {y = 1;}
-                            if(i == 16) {y = 2;}
-                            if(i == 24) {y = 3;}
-                            if(i == 32) {y = 4;}
+                            if(i < 16) {} // no need to update y (track#)
+                            if(i == 16) {y = 1;}
+                            if(i == 16*2) {y = 2;}
+                            if(i == 16*3) {y = 3;}
+                            if(i == 16*4) {y = 4;}
                             // now y (track#) is updated for next round
                         }
                     }
@@ -249,7 +250,7 @@ void applySetting(String settingName, String settingValue) {
         //examples end
         if(settingName == "doStep") {
             for (int y = 0; y < 5; ++y) {
-                for (unsigned int i = 0; i < 8; ++i) {
+                for (unsigned int i = 0; i < 16; ++i) {
                     doStep[y][i] = toBoolean(settingValueArray[y][i]);
                 }
             }
@@ -304,33 +305,33 @@ void SD_writeSettings(unsigned int i) {
         recallFile.print("{"); // begin list
             for (unsigned int k = 0; k < (stepCount*trackCount); ++k) {
                 //track 1
-                if (k < 8) {
-                     y = 0;
+                if (k < 16) {
+                    y = 0;
                 }
                 //track 2
-                if ((k > 7) && (k < 16)) {
-                     y = 1;
+                if ((k > 15) && (k < 16*2)) {
+                    y = 1;
                 }
                 //track 3
-                if ((k > 15) && (k < 24)) {
-                     y = 2;
+                if ((k > 31) && (k < 16*3)) {
+                    y = 2;
                 }
                 //track 4
-                if ((k > 23) && (k < 32)) {
-                     y = 3;
+                if ((k > 47) && (k < 16*4)) {
+                    y = 3;
                 }
                 //track 5
-                if ((k > 31) && (k < 40)) {
-                     y = 4;
+                if ((k > 63) && (k < 16*5)) {
+                    y = 4;
                 }
                 
                 recallFile.print(doStep[y][k%stepCount]);
 
-                if (k < 39) {
+                if (k < 16*5) {
                     recallFile.print(",");
                 }
                 
-                if (k == 39) { // end of list
+                if (k == 79) { // end of list
                     //Serial.println("end list write");
                     recallFile.print("}");
                 }

@@ -6,6 +6,14 @@
 // resetAmountOfTicks (how many ticks per reset)
 // try responsive analog reading for pots
 
+// ClickEncoder.h instead of Encoder.h?
+
+
+
+// ****************************************
+    // HUSK caps på pots !
+// *****************************************
+
 
 // std::random_shuffle
 // PImpl
@@ -15,7 +23,11 @@
 #include <SerialFlash.h>
 #include <Bounce2.h>
 
+#define ENCODER_OPTIMIZE_INTERRUPTS
+#include <Encoder.h>
 
+Encoder devisionEncoder(9, 10);
+Encoder interruptCountToStepResetEncoder(11, 12);
 
 // #include <Arduino.h> // check om det hjælper på ledDelayTime print her?
 // eller skal jeg bruge inline voids og static inline int eksempelvis
@@ -23,12 +35,13 @@
 #include "Leds.h"
 
 extern bool debug;
+extern unsigned int ledDelayTime;
 
 int calculation = 0; // for Serial monitor debugging, math helper
 
 // time guard stuff for quick scope
 unsigned long previousTimeGuard = 0;
-const long timeGuardInterval = 200;
+const long timeGuardInterval = 1000;
 
 int flagAbuttonWasPressed = 0;
 
@@ -37,30 +50,37 @@ int flagAbuttonWasPressed = 0;
 //////////////////
 
 // layout
-unsigned int stepCount = 8;
+unsigned int stepCount = 16;
 unsigned int trackCount = 5;
 
-const unsigned int muteButtons[] = {24, 25, 26, 27, 28, 29, 30, 31};
-Bounce debouncer[8] = {Bounce()}; //deboucing
+const unsigned int muteButtons[] = {24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39};
+Bounce debouncer[16] = {Bounce()};
+int buttonState[16] = {1};
+int lastButtonState[16] = {1};
 
-int buttonState[8] = {1};
-int lastButtonState[8] = {1};
+const unsigned int numEncoders = 2;
+const unsigned int encoderButtonPins[] = {3,17};
+Bounce encoderButtons[2] = {Bounce()};
+int encoderButtonState[2] = {1};
+int lastEncoderButtonState[2] = {1};
+int devisionButtonLatch = false;
+
 int BUTTON_PRESSED = 0;
 
 // multi dimensional arrays for track logic (5 tracks)
-bool doStep[5][8] = {
-    {false, false, false, false, false, false, false, false},
-    {false, false, false, false, false, false, false, false},
-    {false, false, false, false, false, false, false, false},
-    {false, false, false, false, false, false, false, false},
-    {false, false, false, false, false, false, false, false}
+bool doStep[5][16] = {
+    {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true},
+    {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true},
+    {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true},
+    {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true},
+    {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true}
 };
-bool flagHasHandledNoteOn[5][8] = {
-    {false, false, false, false, false, false, false, false},
-    {false, false, false, false, false, false, false, false},
-    {false, false, false, false, false, false, false, false},
-    {false, false, false, false, false, false, false, false},
-    {false, false, false, false, false, false, false, false}
+bool flagHasHandledNoteOn[5][16] = {
+    {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false},
+    {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false}
 };
 
 
@@ -83,22 +103,25 @@ int switchDownState = 1;
 int lastSwitchDownState = 1;
 
 // trigger outputs
-const unsigned int pinsTrack[5] = {1,2,3,4,20}; // track outputs, going to voltage devider and jack out
-unsigned int trackStepIterationtrigDevider[5] = {1,3,2,8,6};
+const unsigned int pinsTrack[5] = {4,5,6,7,20}; // track outputs, going to voltage devider and jack out
+unsigned int trackStepIterationTrigDevider[5] = {1,3,2,8,6};
 unsigned int trackStepIterationClockCounter[5] = {1,1,1,1,1}; // they iterate from 1
 bool madeTrigFlag[5] = {false,false,false,false,false};
-unsigned int triggerHoldTime = 100;
+unsigned int triggerHoldTime = 100; // the actual gate time of outputs
 unsigned int triggerHoldTimeCounter[5] = {triggerHoldTime}; 
 
 
 int gateNr = 0; //sequencer inits
 const unsigned int gateNrMap[] = {
-    0,1,2,3,4,5,6,7,
-    0,1,2,3,4,5,6,7,
-    0,1,2,3,4,5,6,7,
-    0,1,2,3,4,5,6,7 // max 4 times wrapping. 
+    0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,
+    0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,
+    0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,
+    0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 // max 4 times wrapping. 
     // maybe higher is needed due to interruptCountToStepReset
 }; // translation map for maximum 16th devisions
+
+int lastGateNr; // for playhead stepLeds.
+
 
 // control declarations/definitions
 // seq length and offset
@@ -110,14 +133,15 @@ int seqEndValue;
 int seqOffsetValue;
 
 // fraction
-int devisionPot = A3;
+//int devisionPot = A3;
+int devisionReading;
 int devisionValue;
 
 unsigned int dividendValue;
 unsigned int divisorValue;
 
 // experimental
-int interruptCountToStepResetPot = A4;
+//int interruptCountToStepResetPot = A4;
 int interruptCountToStepResetValue;
 
 // internal clock
@@ -149,9 +173,11 @@ void irqClock() {
 void setup() {
     Serial.begin(9600);
     //Serial.begin(19200);
-    while(!Serial && millis() < 5000) {
+    while(!Serial && millis() < 2000) {
         // wait for Serial but if more than 5k millis passed run program
     };
+
+    LEDS_setup();
     
     analogReference(EXTERNAL); 
     // used INTERNAL but now EXT, 
@@ -169,22 +195,29 @@ void setup() {
         pinMode(pinsTrack[i], OUTPUT);
     }
     
-    for (unsigned int i = 0; i < stepCount; ++i) {
-        pinMode(leds[i], OUTPUT);
-    }
+    // for (unsigned int i = 0; i < stepCount; ++i) {
+    //     pinMode(leds[i], OUTPUT);
+    // }
     
-    for (unsigned int i = 0; i < stepCount; ++i) {
-        pinMode(muteLeds[i], OUTPUT);
-    }
+    // for (unsigned int i = 0; i < stepCount; ++i) {
+    //     pinMode(muteLeds[i], OUTPUT);
+    // }
     
-    // Pullup for mute pins
+    // Pullup for mute button pins
     for (unsigned int i = 0; i < stepCount; ++i) {
         pinMode(muteButtons[i], INPUT_PULLUP);
+    }
+
+    // Pullup for encoder button pins
+    for (unsigned int i = 0; i < numEncoders; ++i) {
+        pinMode(encoderButtonPins[i], INPUT_PULLUP);
     }
 
     //track page switch (5 tracks, one for each sds-8 drum)
     pinMode(switchUpPin, INPUT_PULLUP);
     pinMode(switchDownPin, INPUT_PULLUP);
+
+
 
     // debounce setup
     for (unsigned int i = 0; i < stepCount; ++i) {
@@ -196,7 +229,14 @@ void setup() {
     debounceUpTrig.interval(5);
     debounceDownTrig.attach(switchDownPin);
     debounceDownTrig.interval(5);
+
+    for (unsigned int i = 0; i < numEncoders; ++i) {
+        encoderButtons[i].attach(encoderButtonPins[i]);
+        encoderButtons[i].interval(5);
+    }
     
+    devisionEncoder.write(16); // init
+    interruptCountToStepResetEncoder.write(4); // init
 
     SD_init();
     SD_readSettings(); // and apply to program parameters/variables
@@ -204,7 +244,8 @@ void setup() {
     //apply loaded settings of selected track to UI (muteLeds)
     for (unsigned int i = 0; i < stepCount; ++i) {
         if (doStep[selectedTrack][i] == true) {
-            digitalWriteFast(muteLeds[i], HIGH);
+            //digitalWriteFast(muteLeds[i], HIGH);
+            MUTELEDS_on(i);
             if (debug) {
                 Serial.print("init muteLeds");
                 Serial.print(i+1);
@@ -222,12 +263,18 @@ void setup() {
         SD_readAllSettings2Monitor(); // debugging, dump all settings
     }
 
-    LEDS_startUp(); // all set, ready to go
+    LEDS_startUp(); // all set, ready to go, flash some
+}
+
+void setEncoderButtonStates() {
+    for (unsigned int i = 0; i < numEncoders; ++i) {
+        encoderButtons[i].update();
+        encoderButtonState[i] = encoderButtons[i].read();
+    }
 }
 
 void setStepState(unsigned int i) {
     debouncer[i].update();
-    //buttonState[i] = digitalRead(muteButtons[i]); // classic no debounce
     buttonState[i] = debouncer[i].read();
     
     if(buttonState[i] != lastButtonState[i]) {
@@ -235,16 +282,11 @@ void setStepState(unsigned int i) {
             flagAbuttonWasPressed = 1;
             if(doStep[selectedTrack][i] == false) {
                 doStep[selectedTrack][i] = true;
-                digitalWriteFast(muteLeds[i], HIGH);
-                //Serial.println("true");
+                MUTELEDS_on(i);
             } else if(doStep[selectedTrack][i] == true){
                 doStep[selectedTrack][i] = false;
-                digitalWriteFast(muteLeds[i], LOW);
-                //Serial.println("false");
+                MUTELEDS_off(i);
             }
-            //SD_read(i); // read settings
-            // check is something has changed
-            //SD_write(i); // write settings
         }
         lastButtonState[i] = buttonState[i];
     }
@@ -252,11 +294,11 @@ void setStepState(unsigned int i) {
 
 void updateMuteLedsDueToTrackSelection() {
     //if (selectedTrack != lastSelectedtrack) { // breaks something
-        for (int i = 0; i < 8; ++i) {
+        for (int i = 0; i < 16; ++i) {
             if(doStep[selectedTrack][i] == true) {
-                digitalWriteFast(muteLeds[i], HIGH);
+                MUTELEDS_on(i);
             } else if(doStep[selectedTrack][i] == false){
-                digitalWriteFast(muteLeds[i], LOW);
+                MUTELEDS_off(i);
             }
         }
         lastSelectedtrack = selectedTrack;
@@ -269,7 +311,8 @@ void checkTriggers(unsigned int step) {
         // new, hhm counting what math, hard.. hmm
         if (doStep[track][step] == true) {
             
-            if (trackStepIterationtrigDevider[track] == trackStepIterationClockCounter[track]) {
+            // track trigger devider
+            if (trackStepIterationTrigDevider[track] == trackStepIterationClockCounter[track]) {
                 makeTrigger(track);
                 
             }
@@ -278,38 +321,11 @@ void checkTriggers(unsigned int step) {
             trackStepIterationClockCounter[track]++;
             
             // if counter is bigger than set trigDevider 
-            if (trackStepIterationClockCounter[track] > trackStepIterationtrigDevider[track]) {
+            if (trackStepIterationClockCounter[track] > trackStepIterationTrigDevider[track]) {
                 //reset counter for track
                 trackStepIterationClockCounter[track] = 1;
-            }
-            
+            }   
         }
-
-        // old sheise
-        // if (i == 0 && doStep[y][i] == true) {
-        //     makeTrigger(y);
-        // }
-        // if (i == 1 && doStep[y][i] == true) {
-        //     makeTrigger(y);
-        // }
-        // if (i == 2 && doStep[y][i] == true) {
-        //     makeTrigger(y);
-        // }
-        // if (i == 3 && doStep[y][i] == true) {
-        //     makeTrigger(y);
-        // }
-        // if (i == 4 && doStep[y][i] == true) {
-        //     makeTrigger(y);
-        // }
-        // if (i == 5 && doStep[y][i] == true) {
-        //     makeTrigger(y);
-        // }
-        // if (i == 6 && doStep[y][i] == true) {
-        //     makeTrigger(y);
-        // }
-        // if (i == 7 && doStep[y][i] == true) {
-        //     makeTrigger(y);
-        // }
     }
 }
 
@@ -342,49 +358,104 @@ void triggersOFF(unsigned int i) {
 }  */
 
 // should it be switch case logic baby?
-void handleNoteOn(unsigned int i) {
-    if (i == 0 && doStep[selectedTrack][i] == true) {
-        LEDS_on(i);
-        // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[selectedTrack][i] = true;
+void handleSeqTrigLedsOn(unsigned int gateNr) {
+    if (gateNr == 0 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
     }
-    if (i == 1 && doStep[selectedTrack][i] == true) {
-        LEDS_on(i);
-        // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[selectedTrack][i] = true;
+    if (gateNr == 1 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
     }
-    if (i == 2 && doStep[selectedTrack][i] == true) {
-        LEDS_on(i);
-        // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[selectedTrack][i] = true;
+    if (gateNr == 2 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
     }
-    if (i == 3 && doStep[selectedTrack][i] == true) {
-        LEDS_on(i);
-        // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[selectedTrack][i] = true;
+    if (gateNr == 3 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
     }
-    if (i == 4 && doStep[selectedTrack][i] == true) {
-        LEDS_on(i);
-        // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[selectedTrack][i] = true;
+    if (gateNr == 4 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
     }
-    if (i == 5 && doStep[selectedTrack][i] == true) {
-        LEDS_on(i);
-        // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[selectedTrack][i] = true;
+    if (gateNr == 5 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
     }
-    if (i == 6 && doStep[selectedTrack][i] == true) {
-        LEDS_on(i);
-        // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[selectedTrack][i] = true;
+    if (gateNr == 6 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
     }
-    if (i == 7 && doStep[selectedTrack][i] == true) {
-        LEDS_on(i);
-        // digitalWriteFast(leds[i], HIGH);
-        flagHasHandledNoteOn[selectedTrack][i] = true;
-    } 
+    if (gateNr == 7 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
+    }
+    if (gateNr == 8 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
+    }
+    if (gateNr == 9 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
+    }
+    if (gateNr == 10 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
+    }
+    if (gateNr == 11 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
+    }
+    if (gateNr == 12 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
+    }
+    if (gateNr == 13 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
+    }
+    if (gateNr == 14 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
+    }
+    if (gateNr == 15 && doStep[selectedTrack][gateNr] == true) {
+        if(madeTrigFlag[selectedTrack]) {
+            LEDS_on(gateNr);
+            flagHasHandledNoteOn[selectedTrack][gateNr] = true;
+        }
+    }
 }
-
 
 void trackSelect() {
     debounceUpTrig.update();
@@ -400,6 +471,7 @@ void trackSelect() {
             switch(selectedTrack) {
                 case 0:
                 selectedTrack = 1;
+                
                 break;
                 case 1:
                 selectedTrack = 2;
@@ -417,6 +489,8 @@ void trackSelect() {
                 selectedTrack = 0; //back to init if needed
                 break;
             }
+
+            
             
             if (debug) {
                 Serial.print("selectedTrack: ");
@@ -425,6 +499,11 @@ void trackSelect() {
             
         }
         lastSwitchUpState = switchUpState;
+
+        // clean up step leds, for now still just called LEDS_ ... messy head
+        for (unsigned int i = 0; i < stepCount; ++i) {
+            LEDS_clear(i);            
+        }
     }
 
     if(switchDownState != lastSwitchDownState) {
@@ -459,9 +538,52 @@ void trackSelect() {
         }
         // note: used for wrapper?
         lastSwitchDownState = switchDownState;
+
+        // zz. messy msss
+        for (unsigned int i = 0; i < stepCount; ++i) {
+            LEDS_clear(i);
+        }
     }
 }
 
+
+void updateDevisionReadings() {
+    unsigned int pointer = 0; // devisionEncoder is encoder button 0 aka first in array.. messy
+    
+    
+        if ((encoderButtonState[pointer] != lastEncoderButtonState[pointer]) && (encoderButtonState[pointer] == BUTTON_PRESSED)) {
+            if (!devisionButtonLatch) {
+                devisionButtonLatch = true;
+                if (debug) {
+                    Serial.println("first encoder is in track gate counter set modus");
+                    devisionEncoder.write(trackStepIterationTrigDevider[selectedTrack]); //is something
+                }
+            } else {
+                devisionButtonLatch = false;
+                if (debug) {
+                    Serial.println("first encoder is in devision modus");
+                    devisionEncoder.write(devisionReading); // get division
+                }
+
+            }
+            
+        }
+        lastEncoderButtonState[pointer] = encoderButtonState[pointer];
+
+    
+    
+    
+    switch (devisionButtonLatch)
+    {
+    case true: // pressed
+        trackStepIterationTrigDevider[selectedTrack] = devisionEncoder.read();
+        break;
+    
+    default:
+        devisionReading = devisionEncoder.read();
+        break;
+    }
+}
 
 
 void loop() {
@@ -498,18 +620,45 @@ void loop() {
         seqStartValue = analogRead(seqStartPotPin);
         seqEndValue = analogRead(seqEndPotPin);
         seqOffsetValue = analogRead(seqOffsetPin);
-        devisionValue = analogRead(devisionPot);
-        interruptCountToStepResetValue = analogRead(interruptCountToStepResetPot);
+
+        seqStartValue = constrain(map(seqStartValue, 0, 1010, 0, 15), 0, 15);
+        seqEndValue = constrain(map(seqEndValue, 0, 850, 0, 15), 0, 15);
+        seqOffsetValue = map(seqOffsetValue, 0, 1000, 0, 15);
+
+        setEncoderButtonStates();
+        updateDevisionReadings();
+        devisionValue = floor(devisionReading/4)+1;
+
+        if (devisionValue < 1){
+            devisionValue = 1;
+            devisionEncoder.write(1);
+        }
+        if (devisionValue > 16){
+            devisionValue = 16;
+            devisionEncoder.write(16);
+        }
+        //devisionValue = ceil(devisionValue);
+
+
+        interruptCountToStepResetValue = interruptCountToStepResetEncoder.read();
         
-        seqStartValue = constrain(map(seqStartValue, 0, 1010, 0, 7), 0, 7);
-        seqEndValue = constrain(map(seqEndValue, 0, 850, 0, 7), 0, 7);
-        seqOffsetValue = map(seqOffsetValue, 0, 1000, 0, 7);
-        devisionValue = map(devisionValue, 90, 1023, 1, 16);
-        interruptCountToStepResetValue = map(interruptCountToStepResetValue, 90, 1023, 1, 16);
+        if (interruptCountToStepResetValue < 1){
+            interruptCountToStepResetValue = 1;
+            interruptCountToStepResetEncoder.write(1);
+        }
+        if (interruptCountToStepResetValue > 32){
+            interruptCountToStepResetValue = 32;
+            interruptCountToStepResetEncoder.write(32);
+        }
+
+        
         
         // Offset into ->> seqStart and seqEnd
         seqStartValue = seqStartValue+seqOffsetValue;
         seqEndValue = seqEndValue+seqOffsetValue;
+
+        // set length of blinks made by seq trig leds
+        LEDS_gateLength(devisionValue, trackStepIterationTrigDevider[selectedTrack]);
 
 
         /* ############################################################# */
@@ -544,7 +693,7 @@ void loop() {
         updateMuteLedsDueToTrackSelection();
         
         // check if steps are on or off
-        for (int i = 0; i < 8; ++i) {
+        for (int i = 0; i < 16; ++i) {
             setStepState(i);
             SD_writeSettings(i);
             flagAbuttonWasPressed = 0; // burde denne være inde i SD_writeSettings?
@@ -586,42 +735,33 @@ void loop() {
                 gateNr = seqStartValue;
             }*/
             // length of seq, new turn
-            if(gateNr >= 1 + seqEndValue + constrain((devisionValue - 8), 0, 8) ) {
+            if(gateNr >= 1 + seqEndValue + constrain((devisionValue - 16), 0, 16) ) {
                 gateNr = seqStartValue; // trying to control wierd fold-back/over behavior
             }
             
+            // "seq head" aka the reds
+            STEPLEDS_on(gateNrMap[gateNr]);
+            STEPLEDS_off(lastGateNr);
+            
             // debugging
             /*Serial.print("###########");
+            Serial.println("seq debuggin");
             Serial.println("___________");
-            Serial.print("seqStartValue: ");
-            Serial.println(seqStartValue);
-            Serial.print("seqEndValue: ");
-            Serial.println(seqEndValue);
-            Serial.print("seqOffsetValue: ");
-            Serial.println(seqOffsetValue);
-            Serial.print("devisionValue: ");
-            Serial.println(devisionValue);
-            Serial.print("interruptCountToStepResetValue: ");
-            Serial.println(interruptCountToStepResetValue);
             Serial.print("gateNrMap: ");
             Serial.println(gateNrMap[gateNr]);
             Serial.print("gateNr: ");
             Serial.println(gateNr);
-
-
-            Serial.print("dividendValue (faster): ");
-            Serial.println(dividendValue);
-            Serial.print("divisorValue (slower): ");
-            Serial.println(divisorValue);
             */
 
-            
             // noteOn
             // make step --> also here to implement probability, if (bla bla)
-            handleNoteOn(gateNrMap[gateNr]); // led handling and flag
-            checkTriggers(gateNrMap[gateNr]); // send trigs out
+            
+            checkTriggers(gateNrMap[gateNr]); // check and possibly send trigs out
+
+            handleSeqTrigLedsOn(gateNrMap[gateNr]); // led handling and flag
 
             // seq
+            lastGateNr = gateNrMap[gateNr];
             ++gateNr;
             microbeattime = 0;
             resettracker = false;
@@ -633,9 +773,10 @@ void loop() {
             triggersOFF(i);
         }
         
-        // checking the state of all leds every cycle, humans are slow
-        // handling LED "on" time
-        for (int i = 0; i < 8; ++i){
+        // checking the state of all leds every cycle
+        // this is internally handling LED "on" time
+        for (int i = 0; i < 16; ++i){
+            // humans are slow
             LEDS_off(selectedTrack, i);   
         }
         
@@ -643,7 +784,8 @@ void loop() {
         if (currentTimeGuard - previousTimeGuard >= timeGuardInterval) {
             //SD_readAllSettings2Monitor();
             
-            /* Serial.print("seqStartValue: ");
+            Serial.println();
+            Serial.print("seqStartValue: ");
             Serial.println(seqStartValue);
             Serial.print("seqEndValue: ");
             Serial.println(seqEndValue);
@@ -652,7 +794,21 @@ void loop() {
             Serial.print("devisionValue: ");
             Serial.println(devisionValue);
             Serial.print("interruptCountToStepResetValue: ");
-            Serial.println(interruptCountToStepResetValue); */
+            Serial.println(interruptCountToStepResetValue);
+
+            Serial.println();
+            Serial.print("seq pool trigger led delay: ");
+            Serial.println(ledDelayTime);
+
+            Serial.println();
+            Serial.print("trackStepIterationTrigDeviders: ");
+            for (unsigned int i = 0; i < trackCount; ++i) {
+                Serial.print(trackStepIterationTrigDevider[i]);
+                Serial.print(" ");
+            }
+            Serial.println();
+
+
             
             
             
@@ -678,4 +834,3 @@ void loop() {
     } 
     
 }
-
