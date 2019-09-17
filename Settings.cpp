@@ -1,13 +1,15 @@
 #include "Settings.h"
 #include "Leds.h"
 #include <Arduino.h>
-
+//#include "Layout.h"
 
 bool flagSettingsHaveBeenRead = false;
 
 bool debug = true; // serial monitor debug modus, should be dependant on serial modus (which yet is to be implemented)
 bool deleteSettingsFile = false; // set to true if settings.txt is "corrupted"
 
+extern unsigned int stepCount;
+extern unsigned int trackCount;
 
 // placeholder for doStep data
 String settingValueArray[5][16];
@@ -275,6 +277,19 @@ void applySetting(String settingName, String settingValue) {
                 Serial.print(" ");
                 Serial.println("setting");
             }
+        }
+        
+        // these three needs to be implemented
+        if(settingName == "devisionValue") {
+            Serial.println("setting devisionValue");
+        }
+
+        if(settingName == "interruptCountToStepResetValue") {
+            Serial.println("setting interruptCountToStepResetValue");
+        }
+
+        if(settingName == "trackStepIterationTrigDeviders") {
+            Serial.println("setting trackStepIterationTrigDeviders");
         }
     }
 }

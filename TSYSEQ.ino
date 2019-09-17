@@ -21,7 +21,6 @@
 
 #include <Wire.h>
 #include <SerialFlash.h>
-#include <Bounce2.h>
 
 #define ENCODER_OPTIMIZE_INTERRUPTS
 #include <Encoder.h>
@@ -29,13 +28,24 @@
 Encoder devisionEncoder(9, 10);
 Encoder interruptCountToStepResetEncoder(11, 12);
 
+
 // #include <Arduino.h> // check om det hjælper på ledDelayTime print her?
 // eller skal jeg bruge inline voids og static inline int eksempelvis
+//#include "Layout.h"
 #include "Settings.h"
 #include "Leds.h"
+#include "Switches.h"
+#include "Display.h"
+
+muteButtons stepButtons;
+
+Display seqDisplay;
 
 extern bool debug;
 extern unsigned int ledDelayTime;
+
+//extern unsigned int stepCount;
+//extern unsigned int trackCount;
 
 int calculation = 0; // for Serial monitor debugging, math helper
 
@@ -43,18 +53,17 @@ int calculation = 0; // for Serial monitor debugging, math helper
 unsigned long previousTimeGuard = 0;
 const long timeGuardInterval = 1000;
 
-int flagAbuttonWasPressed = 0;
+// layout
+unsigned int stepCount = 16;
+unsigned int trackCount = 5;
 
 // seq stuff
 //////////////////
 //////////////////
 
-// layout
-unsigned int stepCount = 16;
-unsigned int trackCount = 5;
+int BUTTON_PRESSED = 0;
+int flagAbuttonWasPressed = 0;
 
-const unsigned int muteButtons[] = {24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39};
-Bounce debouncer[16] = {Bounce()};
 int buttonState[16] = {1};
 int lastButtonState[16] = {1};
 
@@ -64,8 +73,6 @@ Bounce encoderButtons[2] = {Bounce()};
 int encoderButtonState[2] = {1};
 int lastEncoderButtonState[2] = {1};
 int devisionButtonLatch = false;
-
-int BUTTON_PRESSED = 0;
 
 // multi dimensional arrays for track logic (5 tracks)
 bool doStep[5][16] = {
@@ -146,7 +153,7 @@ int interruptCountToStepResetValue;
 
 // internal clock
 int tempoPin = A5;
-float clockbpmtime;
+float clocktimeGuard;
 
 // CV control
 //int cvValuePotPin = A5;
@@ -173,9 +180,7 @@ void irqClock() {
 void setup() {
     Serial.begin(9600);
     //Serial.begin(19200);
-    while(!Serial && millis() < 2000) {
-        // wait for Serial but if more than 5k millis passed run program
-    };
+    while(!Serial && millis() < 2000) {};
 
     LEDS_setup();
     
@@ -203,10 +208,9 @@ void setup() {
     //     pinMode(muteLeds[i], OUTPUT);
     // }
     
-    // Pullup for mute button pins
-    for (unsigned int i = 0; i < stepCount; ++i) {
-        pinMode(muteButtons[i], INPUT_PULLUP);
-    }
+    stepButtons.setup();
+    seqDisplay.setup();
+   
 
     // Pullup for encoder button pins
     for (unsigned int i = 0; i < numEncoders; ++i) {
@@ -216,14 +220,6 @@ void setup() {
     //track page switch (5 tracks, one for each sds-8 drum)
     pinMode(switchUpPin, INPUT_PULLUP);
     pinMode(switchDownPin, INPUT_PULLUP);
-
-
-
-    // debounce setup
-    for (unsigned int i = 0; i < stepCount; ++i) {
-        debouncer[i].attach(muteButtons[i]);
-        debouncer[i].interval(5);
-    }
 
     debounceUpTrig.attach(switchUpPin);
     debounceUpTrig.interval(5);
@@ -266,29 +262,10 @@ void setup() {
     LEDS_startUp(); // all set, ready to go, flash some
 }
 
-void setEncoderButtonStates() {
+void updateEncoderButtonStates() {
     for (unsigned int i = 0; i < numEncoders; ++i) {
         encoderButtons[i].update();
         encoderButtonState[i] = encoderButtons[i].read();
-    }
-}
-
-void setStepState(unsigned int i) {
-    debouncer[i].update();
-    buttonState[i] = debouncer[i].read();
-    
-    if(buttonState[i] != lastButtonState[i]) {
-        if(buttonState[i] == BUTTON_PRESSED) {
-            flagAbuttonWasPressed = 1;
-            if(doStep[selectedTrack][i] == false) {
-                doStep[selectedTrack][i] = true;
-                MUTELEDS_on(i);
-            } else if(doStep[selectedTrack][i] == true){
-                doStep[selectedTrack][i] = false;
-                MUTELEDS_off(i);
-            }
-        }
-        lastButtonState[i] = buttonState[i];
     }
 }
 
@@ -356,6 +333,27 @@ void triggersOFF(unsigned int i) {
         }
     }
 }  */
+
+
+void setStepState(unsigned int i) {
+    //debouncer[i].update();
+    //buttonState[i] = debouncer[i].read();
+    
+    if(buttonState[i] != lastButtonState[i]) {
+        if(buttonState[i] == BUTTON_PRESSED) {
+            flagAbuttonWasPressed = 1;
+            if(doStep[selectedTrack][i] == false) {
+                doStep[selectedTrack][i] = true;
+                MUTELEDS_on(i);
+            } else if(doStep[selectedTrack][i] == true){
+                doStep[selectedTrack][i] = false;
+                MUTELEDS_off(i);
+            }
+        }
+        lastButtonState[i] = buttonState[i];
+    }
+}
+
 
 // should it be switch case logic baby?
 void handleSeqTrigLedsOn(unsigned int gateNr) {
@@ -576,10 +574,12 @@ void updateDevisionReadings() {
     switch (devisionButtonLatch)
     {
     case true: // pressed
+        // track devision of selected track
         trackStepIterationTrigDevider[selectedTrack] = devisionEncoder.read();
         break;
     
     default:
+        // global devision
         devisionReading = devisionEncoder.read();
         break;
     }
@@ -600,13 +600,15 @@ void loop() {
     //quick scope
     while (1) {
         // time guard for quick scope
-        unsigned long currentTimeGuard = millis();   
+        unsigned long currentTimeGuard = millis();
+
+        seqDisplay.update();
         
-        clockbpmtime = analogRead(tempoPin); // try responsive version?
-        clockbpmtime = map(clockbpmtime, 0, 1023, 6000000, 100000); // det var 4e6, 2e5
+        clocktimeGuard = analogRead(tempoPin); // try responsive version?
+        clocktimeGuard = map(clocktimeGuard, 0, 1023, 6000000, 100000); // det var 4e6, 2e5
         
         //internal clock hack
-        if (clocktime >= clockbpmtime) {
+        if (clocktime >= clocktimeGuard) {
             digitalWriteFast(tempoled, HIGH);
             digitalWriteFast(tempoOut, HIGH);
             delay(1); // remove delay with nice counter delay, like on the step leds
@@ -625,7 +627,7 @@ void loop() {
         seqEndValue = constrain(map(seqEndValue, 0, 850, 0, 15), 0, 15);
         seqOffsetValue = map(seqOffsetValue, 0, 1000, 0, 15);
 
-        setEncoderButtonStates();
+        updateEncoderButtonStates();
         updateDevisionReadings();
         devisionValue = floor(devisionReading/4)+1;
 
@@ -691,6 +693,8 @@ void loop() {
         //track selector
         trackSelect();
         updateMuteLedsDueToTrackSelection();
+
+        stepButtons.update();
         
         // check if steps are on or off
         for (int i = 0; i < 16; ++i) {
@@ -780,57 +784,49 @@ void loop() {
             LEDS_off(selectedTrack, i);   
         }
         
-        // debugg serial print delay
-        if (currentTimeGuard - previousTimeGuard >= timeGuardInterval) {
-            //SD_readAllSettings2Monitor();
-            
-            Serial.println();
-            Serial.print("seqStartValue: ");
-            Serial.println(seqStartValue);
-            Serial.print("seqEndValue: ");
-            Serial.println(seqEndValue);
-            Serial.print("seqOffsetValue: ");
-            Serial.println(seqOffsetValue);
-            Serial.print("devisionValue: ");
-            Serial.println(devisionValue);
-            Serial.print("interruptCountToStepResetValue: ");
-            Serial.println(interruptCountToStepResetValue);
+        if (debug) {
+            // debugg serial print delay
+            if (currentTimeGuard - previousTimeGuard >= timeGuardInterval) {
+                //SD_readAllSettings2Monitor();
+                
+                Serial.println();
+                Serial.print("seqStartValue: ");
+                Serial.println(seqStartValue);
+                Serial.print("seqEndValue: ");
+                Serial.println(seqEndValue);
+                Serial.print("seqOffsetValue: ");
+                Serial.println(seqOffsetValue);
+                Serial.print("devisionValue: ");
+                Serial.println(devisionValue);
+                Serial.print("interruptCountToStepResetValue: ");
+                Serial.println(interruptCountToStepResetValue);
 
-            Serial.println();
-            Serial.print("seq pool trigger led delay: ");
-            Serial.println(ledDelayTime);
+                Serial.println();
+                Serial.print("seq pool trigger led delay: ");
+                Serial.println(ledDelayTime);
 
-            Serial.println();
-            Serial.print("trackStepIterationTrigDeviders: ");
-            for (unsigned int i = 0; i < trackCount; ++i) {
-                Serial.print(trackStepIterationTrigDevider[i]);
-                Serial.print(" ");
+                Serial.println();
+                Serial.print("trackStepIterationTrigDeviders: ");
+                for (unsigned int i = 0; i < trackCount; ++i) {
+                    Serial.print(trackStepIterationTrigDevider[i]);
+                    Serial.print(" ");
+                }
+                Serial.println();
+                
+                previousTimeGuard = currentTimeGuard;
+
+                /*    not stable enough - use 0.1uf cap - argh lazy 
+                Serial.print("direct reading tempoPin: ");
+                Serial.println(analogRead(tempoPin)); // and show a responsive version!
+                Serial.print("clocktimeGuard: ");
+                Serial.println(clocktimeGuard);
+                Serial.print("BPM: ");
+                Serial.println(60000/(clocktimeGuard/1000));
+                */
+ 
             }
-            Serial.println();
-
-
-            
-            
-            
-            previousTimeGuard = currentTimeGuard; 
-            /*    not stable enough - use 0.1uf cap - argh lazy 
-            Serial.print("direct reading tempoPin: ");
-            Serial.println(analogRead(tempoPin)); // and show a responsive version!
-            Serial.print("clockbpmtime: ");
-            Serial.println(clockbpmtime);
-            Serial.print("BPM: ");
-            Serial.println(60000/(clockbpmtime/1000));
-            Serial.print("devision: ");
-            Serial.println(devisionValue);
-            Serial.print("fraction: ");
-            Serial.println(fraction);
-            
-            Serial.println("seqEndValue + constrain((devisionValue - 8), 0, 8) = ");
-            calculation = seqEndValue + constrain((devisionValue - 8), 0, 8);
-            Serial.println(calculation);
-            
-            counterr = 3000; */
         }
+        
     } 
     
 }

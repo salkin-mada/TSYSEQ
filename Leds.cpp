@@ -14,7 +14,7 @@ const bool ShiftPWM_balanceLoad = false;
 #include <Arduino.h>
 #include <ShiftPWM.h>
 
-// program iteration based timing, not millis()
+// program iteration based timing, not millis(), but should go for proper time counting though..soon
 unsigned int ledDelayTime = 600; // init, will vary with seq devision
 unsigned int ledDelayTimeFactor = 4000; // hence 4e3 is actually not five seconds
 unsigned int ledDelayMaxTime = 8000;
@@ -32,7 +32,7 @@ void LEDS_setup() {
 }
 
 void LEDS_startUp() {
-    int stropeLength = 20;
+    int stropeLength = 10;
     ShiftPWM.SetAll(0);
 
     for(int i = 0; i < stropeLength; i++){
