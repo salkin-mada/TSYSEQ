@@ -5,7 +5,7 @@
 
 bool flagSettingsHaveBeenRead = false;
 
-bool debug = true; // serial monitor debug modus, should be dependant on serial modus (which yet is to be implemented)
+bool debug = false; // serial monitor debug modus, should be dependant on serial modus (which yet is to be implemented)
 bool deleteSettingsFile = false; // set to true if settings.txt is "corrupted"
 
 extern unsigned int stepCount;
@@ -13,6 +13,15 @@ extern unsigned int trackCount;
 
 // placeholder for doStep data
 String settingValueArray[5][16];
+
+
+bool savedPoolDirection;
+int savedInterruptCountToStepResetValue;
+int savedDevisionValue;
+int savedSelectedTrack;
+bool savedTrackMuteLatch[5];
+unsigned int savedTrackStepIterationTrigDevider[5];
+
 
 // converting string to Float
 float toFloat(String settingValue){
@@ -59,14 +68,19 @@ void SD_init() {
     
     if (deleteSettingsFile) {
         if (SD.exists("SETTINGS.TXT") == true) {
-            if (SD.remove("SETTINGS.TXT") == true); {
-                Serial.println("removed SETTINGS.TXT");
+            if (SD.remove("SETTINGS.TXT") == true); { // remove file
+                if (debug) {
+                    Serial.println("removed SETTINGS.TXT");
+                }
             }
         }    
-    } else {if (debug) {Serial.println("dont delete file");}}
+    } else {
+        if (debug) {
+            Serial.println("dont delete file");
+        }
+    }
     
-
-    // make sure settingValueArray is doStep in case no settingsfile exists
+    // make sure settingValueArray is doStep in case no settingsfile existed and it was freshly created
     // this is a pre sd read thingy
     for (unsigned int y = 0; y < trackCount; ++y) {
         for (unsigned int i = 0; i < stepCount; ++i) {
@@ -74,7 +88,7 @@ void SD_init() {
         }
     }
     
-    delay(200); // sd chill
+    delay(100); // sd chill
 }
 
 /* ################################## READ ################################### */
@@ -84,7 +98,9 @@ void SD_readSettings(){
 
     // if no setting file exists create it
     if (!SD.exists("SETTINGS.TXT")) {
-        Serial.println("Creating SETTINGS.TXT...");
+        if (debug) {
+            Serial.println("Creating SETTINGS.TXT...");
+        }
         recallFile = SD.open("SETTINGS.TXT", FILE_WRITE); // Write File
         recallFile.close();
     }
@@ -223,10 +239,14 @@ void SD_readSettings(){
             }
         } else {
             // if the file didn't open, print an error:
-            Serial.println("error opening settings.txt");
+            if (debug) {
+                Serial.println("error opening settings.txt");
+            }
         }
     } else {
-        Serial.println("SD_read could not find settings.txt");
+        if (debug) {
+            Serial.println("SD_read could not find settings.txt");
+        }
     }
 }
 
@@ -251,8 +271,8 @@ void applySetting(String settingName, String settingValue) {
         }*/
         //examples end
         if(settingName == "doStep") {
-            for (int y = 0; y < 5; ++y) {
-                for (unsigned int i = 0; i < 16; ++i) {
+            for (unsigned int y = 0; y < trackCount; ++y) {
+                for (unsigned int i = 0; i < stepCount; ++i) {
                     doStep[y][i] = toBoolean(settingValueArray[y][i]);
                 }
             }
@@ -279,17 +299,42 @@ void applySetting(String settingName, String settingValue) {
             }
         }
         
-        // these three needs to be implemented
+        if(settingName == "selectedTrack") {
+            selectedTrack = settingValue.toInt();
+            if (debug) {
+                Serial.print("applied ");
+                Serial.print(settingName);
+                Serial.print(" ");
+                Serial.println("setting");
+            }
+        }
+
         if(settingName == "devisionValue") {
-            Serial.println("setting devisionValue");
+            devisionValue = settingValue.toInt();
+            if (debug) {
+                Serial.print("applied ");
+                Serial.print(settingName);
+                Serial.print(" ");
+                Serial.println("setting");
+            }
         }
 
         if(settingName == "interruptCountToStepResetValue") {
-            Serial.println("setting interruptCountToStepResetValue");
+            if (debug) {
+                Serial.print("applied ");
+                Serial.print(settingName);
+                Serial.print(" ");
+                Serial.println("setting");
+            }
         }
 
-        if(settingName == "trackStepIterationTrigDeviders") {
-            Serial.println("setting trackStepIterationTrigDeviders");
+        if(settingName == "trackStepIterationTrigDevider") {
+            if (debug) {
+                Serial.print("applied ");
+                Serial.print(settingName);
+                Serial.print(" ");
+                Serial.println("setting");
+            }
         }
     }
 }
@@ -298,6 +343,7 @@ void applySetting(String settingName, String settingValue) {
 /* ################################ SETTINGS ################################# */
 void SD_writeSettings(unsigned int i) {
     
+    // save steps
     if (flagAbuttonWasPressed == 1) {int y = 0;
         //Serial.println("__________ something changed");
         
@@ -340,7 +386,7 @@ void SD_writeSettings(unsigned int i) {
                     y = 4;
                 }
                 
-                recallFile.print(doStep[y][k%stepCount]);
+                recallFile.print(doStep[y][k%stepCount]); // write all 5 chans as one long string
 
                 if (k < 16*5) {
                     recallFile.print(",");

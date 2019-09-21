@@ -4,3 +4,21 @@ I think 74HC595 is the wrong chip for this application. It has to do with the mi
 The minimum input voltage is calculated with 0.7 * Vcc. With 5V supply, the input voltage should be > 3.5V but the max output from a Teensy 3.6 is 3.3V.
 
 74HCT595 (Nexperia/ Diodes inc.) or 74AHCT595 (Texas Instruments) is the recommended type. The minimum input high voltage for these is 2.0V.
+
+
+
+
+
+// todo
+// try responsive analog reading for pots
+// ClickEncoder.h instead of Encoder.h?
+
+// ****************************************
+    // HUSK caps på pots !
+// *****************************************
+
+// std::random_shuffle
+// PImpl
+
+// code check
+// bastl kompas

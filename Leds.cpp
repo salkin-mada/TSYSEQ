@@ -16,8 +16,8 @@ const bool ShiftPWM_balanceLoad = false;
 
 // program iteration based timing, not millis(), but should go for proper time counting though..soon
 unsigned int ledDelayTime = 600; // init, will vary with seq devision
-unsigned int ledDelayTimeFactor = 4000; // hence 4e3 is actually not five seconds
-unsigned int ledDelayMaxTime = 8000;
+unsigned int ledDelayTimeFactor = 3500; // hence 4e3 is actually not five seconds
+unsigned int ledDelayMaxTime = 6000;
 unsigned int ledDelayCounter[16] = {ledDelayTime}; 
 
 unsigned char maxBrightness = 255;

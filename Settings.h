@@ -5,12 +5,15 @@
 #include <SD.h>
 // #include <EEPROM.h>
 
-extern bool doStep[5][16]; // should be trackCount and stepCount instead of [5][8]
+extern bool doStep[5][16];
 extern int flagAbuttonWasPressed;
-//extern unsigned int stepCount;
-//extern unsigned int trackCount;
-extern int selectedTrack; // not used in settings yet, but here as a reminder
-// = would be nice to recall selectedTrack on power up
+
+extern unsigned int trackStepIterationTrigDevider[5];
+extern bool trackMuteLatch[5];
+extern int selectedTrack;
+extern int devisionValue;
+extern int interruptCountToStepResetValue;
+extern bool poolDirection;
 
 void SD_init();
 void SD_checkTypeAndListRoot();

@@ -1,23 +1,18 @@
-// hallo
-// at the moment this sequencer incorporates some bad math
-// this gives some interesting counter intuitive results
 
-// todo
-// resetAmountOfTicks (how many ticks per reset)
-// try responsive analog reading for pots
+/*___               __      _                __            ___              ___//
+|                                                                               |
+    hallo
+    at the moment this sequencer incorporates some bad math and timing
+    this gives some interesting counter intuitive results
 
-// ClickEncoder.h instead of Encoder.h?
-
-
-
-// ****************************************
-    // HUSK caps på pots !
-// *****************************************
+    a proper non-accurate robot feel "offness" (swing? no!) 
+|                                                    is naturally implemented
+|                                                                               |
+//___          _     _             __                ___        __          ___*/
 
 
-// std::random_shuffle
-// PImpl
-// tupedefs
+
+
 
 #include <Wire.h>
 #include <SerialFlash.h>
@@ -28,6 +23,11 @@
 Encoder devisionEncoder(9, 10);
 Encoder interruptCountToStepResetEncoder(11, 12);
 
+#define FORWARDS 1
+#define BACKWARDS 0
+bool poolDirection = 1; // init forwards
+
+bool trackerDebug = false;
 
 // #include <Arduino.h> // check om det hjælper på ledDelayTime print her?
 // eller skal jeg bruge inline voids og static inline int eksempelvis
@@ -37,15 +37,14 @@ Encoder interruptCountToStepResetEncoder(11, 12);
 #include "Switches.h"
 #include "Display.h"
 
-muteButtons stepButtons;
+muteButtons stepButtons; // instance of switches.h buttons
+Touch trackButtons; // instance of Touch class
+Display seqDisplay; // instance of Display class
 
-Display seqDisplay;
-
+bool hang = false; // hang/pause all operations, for ex. pin I/O work
 extern bool debug;
 extern unsigned int ledDelayTime;
-
-//extern unsigned int stepCount;
-//extern unsigned int trackCount;
+extern bool trackMuteLatch[5];
 
 int calculation = 0; // for Serial monitor debugging, math helper
 
@@ -57,7 +56,6 @@ const long timeGuardInterval = 1000;
 unsigned int stepCount = 16;
 unsigned int trackCount = 5;
 
-// seq stuff
 //////////////////
 //////////////////
 
@@ -68,11 +66,12 @@ int buttonState[16] = {1};
 int lastButtonState[16] = {1};
 
 const unsigned int numEncoders = 2;
-const unsigned int encoderButtonPins[] = {3,17};
+const unsigned int encoderButtonPins[] = {3,29};
 Bounce encoderButtons[2] = {Bounce()};
 int encoderButtonState[2] = {1};
 int lastEncoderButtonState[2] = {1};
 int devisionButtonLatch = false;
+int interruptCountButtonLatch = false;
 
 // multi dimensional arrays for track logic (5 tracks)
 bool doStep[5][16] = {
@@ -90,7 +89,6 @@ bool flagHasHandledNoteOn[5][16] = {
     {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false}
 };
 
-
 // tempo pins
 const unsigned int tempoled = 13;
 const unsigned int tempoOut = 23; // used for tempo input to the interrupt pin.
@@ -98,6 +96,7 @@ const unsigned int tempoOut = 23; // used for tempo input to the interrupt pin.
 //switch for track selection, 5 tracks in all
 int selectedTrack = 0; // init track is 0, not part of SD_writeSettings yet..
 int lastSelectedtrack = 0;
+
 const unsigned int switchUpPin = 22;
 const unsigned int switchDownPin = 21;
 Bounce debounceUpTrig = Bounce(); //deboucing
@@ -133,26 +132,25 @@ int lastGateNr; // for playhead stepLeds.
 // control declarations/definitions
 // seq length and offset
 int seqStartPotPin = A0;
-int seqEndPotPin = A1;
-int seqOffsetPin = A2;
+int seqEndPotPin = A19;
+int seqOffsetPin = A20;
 int seqStartValue;
 int seqEndValue;
 int seqOffsetValue;
 
 // fraction
-//int devisionPot = A3;
-int devisionReading;
 int devisionValue;
 
-unsigned int dividendValue;
-unsigned int divisorValue;
+//( not used in this version
+//unsigned int dividendValue;
+//unsigned int divisorValue;
 
 // experimental
 //int interruptCountToStepResetPot = A4;
 int interruptCountToStepResetValue;
 
 // internal clock
-int tempoPin = A5;
+int tempoPin = A13;
 float clocktimeGuard;
 
 // CV control
@@ -163,7 +161,7 @@ float clocktimeGuard;
 
 //interrupt stuff
 const int pinClock = 0; // external clock in i dette tilfælde en hacket internal clock ud og så ind her ...
-//const int debouncetime = 1000; //debouncetid i mikrosekunder
+const int trackerDebounceTime = 1000; //debouncetid i mikrosekunder
 volatile bool flag = false;
 int interruptCountToStepReset = 0;
 float fraction = 1.0/8.0; // 1/8 node init devision
@@ -178,10 +176,17 @@ void irqClock() {
 
 
 void setup() {
-    Serial.begin(9600);
-    //Serial.begin(19200);
-    while(!Serial && millis() < 2000) {};
 
+    if (hang) {
+        while(1){}; // pauser for pin I/O work
+    }
+
+    if (debug) {
+        Serial.begin(9600);
+        //Serial.begin(19200);
+        while(!Serial && millis() < 4000) {};    
+    }
+    
     LEDS_setup();
     
     analogReference(EXTERNAL); 
@@ -290,8 +295,9 @@ void checkTriggers(unsigned int step) {
             
             // track trigger devider
             if (trackStepIterationTrigDevider[track] == trackStepIterationClockCounter[track]) {
-                makeTrigger(track);
-                
+                if (!trackMuteLatch[track]) {
+                    makeTrigger(track);
+                }
             }
             
             // iterate
@@ -455,7 +461,7 @@ void handleSeqTrigLedsOn(unsigned int gateNr) {
     }
 }
 
-void trackSelect() {
+void setDirection() {
     debounceUpTrig.update();
     debounceDownTrig.update();
     switchUpState = debounceUpTrig.read();
@@ -464,124 +470,117 @@ void trackSelect() {
     if(switchUpState != lastSwitchUpState) {
         if(switchUpState == BUTTON_PRESSED) {
             if (debug) {
-                Serial.println("track UP");
+                Serial.println("FORWARDS");
             }
-            switch(selectedTrack) {
-                case 0:
-                selectedTrack = 1;
-                
-                break;
-                case 1:
-                selectedTrack = 2;
-                break;
-                case 2:
-                selectedTrack = 3;
-                break;
-                case 3:
-                selectedTrack = 4;
-                break;
-                case 4:
-                selectedTrack = 0;
-                break;
-                default:
-                selectedTrack = 0; //back to init if needed
-                break;
-            }
-
-            
-            
-            if (debug) {
-                Serial.print("selectedTrack: ");
-                Serial.println(selectedTrack);
-            }
-            
+            poolDirection = FORWARDS;
         }
         lastSwitchUpState = switchUpState;
 
-        // clean up step leds, for now still just called LEDS_ ... messy head
-        for (unsigned int i = 0; i < stepCount; ++i) {
-            LEDS_clear(i);            
-        }
     }
 
     if(switchDownState != lastSwitchDownState) {
         if(switchDownState == BUTTON_PRESSED) {
             if (debug) {
-                Serial.println("track DOWN");
+                Serial.println("BACKWARDS");
             }
-            switch(selectedTrack) {
-                case 0:
-                selectedTrack = 4;
-                break;
-                case 1:
-                selectedTrack = 0;
-                break;
-                case 2:
-                selectedTrack = 1;
-                break;
-                case 3:
-                selectedTrack = 2;
-                break;
-                case 4:
-                selectedTrack = 3;
-                break;
-                default:
-                selectedTrack = 0; //back to init if needed, aka wrapper
-                break;
-            }
-            if (debug) {
-                Serial.print("selectedTrack: ");
-                Serial.println(selectedTrack);
-            }
+            poolDirection = BACKWARDS;            
         }
-        // note: used for wrapper?
         lastSwitchDownState = switchDownState;
 
-        // zz. messy msss
-        for (unsigned int i = 0; i < stepCount; ++i) {
-            LEDS_clear(i);
-        }
     }
 }
 
 
 void updateDevisionReadings() {
     unsigned int pointer = 0; // devisionEncoder is encoder button 0 aka first in array.. messy
-    
-    
-        if ((encoderButtonState[pointer] != lastEncoderButtonState[pointer]) && (encoderButtonState[pointer] == BUTTON_PRESSED)) {
-            if (!devisionButtonLatch) {
-                devisionButtonLatch = true;
-                if (debug) {
-                    Serial.println("first encoder is in track gate counter set modus");
-                    devisionEncoder.write(trackStepIterationTrigDevider[selectedTrack]); //is something
-                }
-            } else {
-                devisionButtonLatch = false;
-                if (debug) {
-                    Serial.println("first encoder is in devision modus");
-                    devisionEncoder.write(devisionReading); // get division
-                }
 
+    // latching logic
+    if ((encoderButtonState[pointer] != lastEncoderButtonState[pointer]) && (encoderButtonState[pointer] == BUTTON_PRESSED)) {
+        if (!devisionButtonLatch) {
+            devisionButtonLatch = true;
+            devisionEncoder.write(trackStepIterationTrigDevider[selectedTrack] * 4); //set encoder to val for state, X4 count
+            if (debug) {
+                Serial.println("division encoder is in track gate counter set modus");
             }
+        } else {
+            devisionButtonLatch = false;
+            devisionEncoder.write(devisionValue * 4); // get division, set encoder to val for state, X4 count
             
+            if (debug) {
+                Serial.println("division encoder is in devision modus");
+            }
         }
-        lastEncoderButtonState[pointer] = encoderButtonState[pointer];
-
-    
-    
+        
+    }
+    lastEncoderButtonState[pointer] = encoderButtonState[pointer];
     
     switch (devisionButtonLatch)
     {
     case true: // pressed
         // track devision of selected track
-        trackStepIterationTrigDevider[selectedTrack] = devisionEncoder.read();
+        trackStepIterationTrigDevider[selectedTrack] = devisionEncoder.read() >> 2;  // shift to counter X4
+        if (trackStepIterationTrigDevider[selectedTrack] < 1) {
+            trackStepIterationTrigDevider[selectedTrack] = 1;
+            devisionEncoder.write(1*4); // mult up to X4
+        }
+        if (trackStepIterationTrigDevider[selectedTrack] > 99) {
+            trackStepIterationTrigDevider[selectedTrack] = 99;
+            devisionEncoder.write(99*4); // mult up to X4
+        }
         break;
     
     default:
         // global devision
-        devisionReading = devisionEncoder.read();
+        devisionValue = devisionEncoder.read() >> 2; // shift to counter X4
+
+        // devisionValue borders
+        if (devisionValue < 1) {
+            devisionValue = 1;
+            devisionEncoder.write(1*4);  // mult up to X4
+        }
+        if (devisionValue > 32) {
+            devisionValue = 32;
+            devisionEncoder.write(32*4);  // mult up to X4
+        };
         break;
+    }
+}
+
+void updateResetCountReading() {
+
+    /////////////////////////// BUTTON STUFF HERE FOR NOW. WHAA SHOULD BE IN Switches.h which should be called Interaction.h
+    unsigned int pointer = 1; // interruptCount Encoder is encoder button 1 aka second in array.. messy
+
+    // latching logic
+    if ((encoderButtonState[pointer] != lastEncoderButtonState[pointer]) && (encoderButtonState[pointer] == BUTTON_PRESSED)) {
+        if (!interruptCountButtonLatch) {
+            interruptCountButtonLatch = true;
+
+            if (debug) {
+                Serial.println("interruptCount encoder is setting trackselectors to mute latch modus");
+            }
+        } else {
+            interruptCountButtonLatch = false;
+
+            if (debug) {
+                Serial.println("interruptCount encoder is setting trackselectors to normal modus");
+            }
+        }
+        
+    }
+    lastEncoderButtonState[pointer] = encoderButtonState[pointer];
+    ///////////////////////////////////////// end of something that should be its own void
+
+
+    interruptCountToStepResetValue = interruptCountToStepResetEncoder.read() >> 2; // shift to counter X4
+        
+    if (interruptCountToStepResetValue < 1) {
+        interruptCountToStepResetValue = 1;
+        interruptCountToStepResetEncoder.write(1*4); // mult up to X4
+    }
+    if (interruptCountToStepResetValue > 99) {
+        interruptCountToStepResetValue = 99;
+        interruptCountToStepResetEncoder.write(99*4); // mult up to X4
     }
 }
 
@@ -591,7 +590,7 @@ void loop() {
     unsigned int t1 = 250000;
     elapsedMicros microtime;
     elapsedMicros microbeattime = 10000;
-    // elapsedMicros debouncer = 0;
+    elapsedMicros trackerDebouncer = 0;
     bool resettracker = true;
     
     // internal clock
@@ -602,7 +601,7 @@ void loop() {
         // time guard for quick scope
         unsigned long currentTimeGuard = millis();
 
-        seqDisplay.update();
+        seqDisplay.update(); // user feedback first
         
         clocktimeGuard = analogRead(tempoPin); // try responsive version?
         clocktimeGuard = map(clocktimeGuard, 0, 1023, 6000000, 100000); // det var 4e6, 2e5
@@ -629,31 +628,7 @@ void loop() {
 
         updateEncoderButtonStates();
         updateDevisionReadings();
-        devisionValue = floor(devisionReading/4)+1;
-
-        if (devisionValue < 1){
-            devisionValue = 1;
-            devisionEncoder.write(1);
-        }
-        if (devisionValue > 16){
-            devisionValue = 16;
-            devisionEncoder.write(16);
-        }
-        //devisionValue = ceil(devisionValue);
-
-
-        interruptCountToStepResetValue = interruptCountToStepResetEncoder.read();
-        
-        if (interruptCountToStepResetValue < 1){
-            interruptCountToStepResetValue = 1;
-            interruptCountToStepResetEncoder.write(1);
-        }
-        if (interruptCountToStepResetValue > 32){
-            interruptCountToStepResetValue = 32;
-            interruptCountToStepResetEncoder.write(32);
-        }
-
-        
+        updateResetCountReading();
         
         // Offset into ->> seqStart and seqEnd
         seqStartValue = seqStartValue+seqOffsetValue;
@@ -691,7 +666,9 @@ void loop() {
         /* ############################################################# */
         
         //track selector
-        trackSelect();
+        trackButtons.update();
+        trackButtons.trackSelector();
+
         updateMuteLedsDueToTrackSelection();
 
         stepButtons.update();
@@ -705,8 +682,12 @@ void loop() {
             // så skrives der kun én gang per knaptryk
         }
         
+        setDirection();
+
         //tracker
-        if (flag /*&& (debouncer > debouncetime)*/) {
+        if (flag && (trackerDebouncer > trackerDebounceTime)) {
+            
+            trackerDebouncer = 0;
             
             t1 = (float(microtime) * fraction);
             microtime = 0;
@@ -714,19 +695,24 @@ void loop() {
             flag = false;
             
             //extended "sync" part of tracking
-            // hvor mange clicks der skal til før at sekvensen resettes
+            // hvor mange clicks der skal til før at sekvensen resettes og retning på hovedet
             if (interruptCountToStepReset >= interruptCountToStepResetValue) {
                 resettracker = true;
+                if (poolDirection == FORWARDS) {
+                ++gateNr;
+            } else if (poolDirection == BACKWARDS) {
+                --gateNr;
+                if (gateNr < 0) {
+                    gateNr = 15;
+                }
+            }
                 gateNr = seqStartValue;
-                //Serial.println("¤_STEP_RESET_¤");
+                if (trackerDebug) {
+                    Serial.println("¤_STEP_RESET_¤");
+                }
                 interruptCountToStepReset = 0;
             }
-            //gateNr = seqStartValue;
-            
-            // fraction kan bruges i en funktion sådan at det kan
-            // kontrolleres hvor ofte sequenceren sætter seqStartValue til gateNr
-            // men der bliver jo tænkt lidt anderldes om dette i seq delen nedenunder .
-            // if gate er større end end value set gate til seqstartvalue
+
 
             interruptCountToStepReset++;
         }
@@ -766,7 +752,17 @@ void loop() {
 
             // seq
             lastGateNr = gateNrMap[gateNr];
-            ++gateNr;
+
+            // direction control
+            if (poolDirection == FORWARDS) {
+                ++gateNr;
+            } else if (poolDirection == BACKWARDS) {
+                --gateNr;
+                if (gateNr < 0) {
+                    gateNr = 15;
+                }
+            }
+
             microbeattime = 0;
             resettracker = false;
         }
