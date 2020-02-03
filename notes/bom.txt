@@ -1,0 +1,2 @@
+5 X 1N5819 (protection diodes on track outputs)
+1 X HCMS-2913 (display)

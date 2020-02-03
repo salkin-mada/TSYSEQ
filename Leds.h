@@ -4,8 +4,10 @@
 const unsigned int leds[] = {2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41, 44, 47}; // blues
 const unsigned int muteLeds[] = {1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46}; // greens
 const unsigned int stepLeds[] = {0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45}; // reds
+const unsigned int tempoled = 13;
 
 extern bool flagHasHandledNoteOn[5][16];
+extern bool tempoOutFlag;
 
 void LEDS_setup();
 void LEDS_startUp();
@@ -18,6 +20,8 @@ void MUTELEDS_on(unsigned int i);
 void MUTELEDS_off(unsigned int i);
 void STEPLEDS_on(unsigned int i);
 void STEPLEDS_off(unsigned int i);
+void tempoLedOn();
+void tempoLedOff();
 void LEDS_sdCardInitFailed();
 // class Leds
 // {

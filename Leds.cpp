@@ -1,4 +1,4 @@
-const int ShiftPWM_latchPin=8;
+const int ShiftPWM_latchPin = 8;
 #define SHIFTPWM_NOSPI
 const int ShiftPWM_dataPin = 1;
 const int ShiftPWM_clockPin = 2;
@@ -15,118 +15,159 @@ const bool ShiftPWM_balanceLoad = false;
 #include <ShiftPWM.h>
 
 // program iteration based timing, not millis(), but should go for proper time counting though..soon
-unsigned int ledDelayTime = 600; // init, will vary with seq devision
+unsigned int ledDelayTime = 600;        // init, will vary with seq devision
 unsigned int ledDelayTimeFactor = 3500; // hence 4e3 is actually not five seconds
 unsigned int ledDelayMaxTime = 6000;
-unsigned int ledDelayCounter[16] = {ledDelayTime}; 
+unsigned int ledDelayCounter[16] = {ledDelayTime};
+
+unsigned int tempoLedDelayTime = 400;
+unsigned int tempoLedDelayCounter = tempoLedDelayTime;
+bool tempoLedOnFlag = false;
 
 unsigned char maxBrightness = 255;
 unsigned char pwmFrequency = 75;
 unsigned int numRegisters = 6;
-unsigned int numOutputs = numRegisters*8;
-unsigned int numRGBLeds = numRegisters*8/3;
+unsigned int numOutputs = numRegisters * 8;
+unsigned int numRGBLeds = numRegisters * 8 / 3;
 
-void LEDS_setup() {
+void LEDS_setup()
+{
     ShiftPWM.SetAmountOfRegisters(numRegisters);
     ShiftPWM.Start(pwmFrequency, maxBrightness);
+    pinMode(tempoled, OUTPUT);
 }
 
-void LEDS_startUp() {
+void LEDS_startUp()
+{
     int stropeLength = 10;
     ShiftPWM.SetAll(0);
 
-    for(int i = 0; i < stropeLength; i++){
+    for (int i = 0; i < stropeLength; i++)
+    {
         ShiftPWM.SetAll(8);
         delay(25);
         ShiftPWM.SetAll(0);
         delay(25);
     }
 
-    for(int i = 0; i < 16; i++){
+    for (int i = 0; i < 16; i++)
+    {
         //ShiftPWM.SetOne(i,150);
-        ShiftPWM.SetHSV(i,50,255,255);
+        ShiftPWM.SetHSV(i, 50, 255, 255);
         delay(25);
         //ShiftPWM.SetOne(i,0);
     }
     //delay(10);
-    for(int i = 16; i > 0; --i){
+    for (int i = 16; i > 0; --i)
+    {
         //ShiftPWM.SetOne(i,150);
-        ShiftPWM.SetHSV(i-1,50,255,0);
+        ShiftPWM.SetHSV(i - 1, 50, 255, 0);
         delay(25);
         //ShiftPWM.SetOne(i,0);
     }
 
     //ShiftPWM.SetAll(0);
-
 }
 
-void LEDS_sdCardInitFailed() {
-    for(int i = 0; i < 20; ++i) {
-        for (int i = 0; i < 16; ++i) {
-            ShiftPWM.SetHSV(i,150,255,255);
+void LEDS_sdCardInitFailed()
+{
+    for (int i = 0; i < 20; ++i)
+    {
+        for (int i = 0; i < 16; ++i)
+        {
+            ShiftPWM.SetHSV(i, 150, 255, 255);
             //digitalWriteFast(muteLeds[i], HIGH);
         }
         delay(100);
-        for (int i = 0; i < 16; ++i) {
-            ShiftPWM.SetHSV(i,150,255,0);
+        for (int i = 0; i < 16; ++i)
+        {
+            ShiftPWM.SetHSV(i, 150, 255, 0);
             //digitalWriteFast(muteLeds[i], LOW);
         }
         delay(100);
     }
 }
 
-void LEDS_on(unsigned int i) {
+void LEDS_on(unsigned int i)
+{
     //digitalWriteFast(leds[i], HIGH);
-        ShiftPWM.SetOne(leds[i],100);
-        //ShiftPWM.SetHSV(i,50,255,255);
+    ShiftPWM.SetOne(leds[i], 100);
+    //ShiftPWM.SetHSV(i,50,255,255);
 }
 
-void LEDS_off(unsigned int y, unsigned int i) {
+void LEDS_off(unsigned int y, unsigned int i)
+{
     // handle led delay, checking all every cycle, humans are slow.
     if (flagHasHandledNoteOn[y][i] == true)
     {
-        if(ledDelayCounter[i]-- == 0) {
+        if (ledDelayCounter[i]-- == 0)
+        {
             //digitalWriteFast(leds[i], LOW);
             //ShiftPWM.SetHSV(i,50,255,0);
-            
-            ShiftPWM.SetOne(leds[i],0);
+
+            ShiftPWM.SetOne(leds[i], 0);
             flagHasHandledNoteOn[y][i] = false;
             ledDelayCounter[i] = ledDelayTime;
         }
     }
 }
 
-void LEDS_clear(unsigned int i) {
-    ShiftPWM.SetOne(leds[i],0);
+void LEDS_clear(unsigned int i)
+{
+    ShiftPWM.SetOne(leds[i], 0);
 }
 
-void LEDS_gateLength(unsigned int devisionFactor, unsigned int trackStepIterationDevider) {
+void LEDS_gateLength(unsigned int devisionFactor, unsigned int trackStepIterationDevider)
+{
     unsigned int result;
-    result = (ledDelayTimeFactor/devisionFactor)*trackStepIterationDevider;
+    result = (ledDelayTimeFactor / devisionFactor) * trackStepIterationDevider;
     // last *mul is here to make longer leds blinks dur to trackStepIterationDevider amount
-    if (result > ledDelayMaxTime) {
+    if (result > ledDelayMaxTime)
+    {
         result = ledDelayMaxTime;
     }
-    ledDelayTime = result; 
-    
+    ledDelayTime = result;
 }
 
-void MUTELEDS_on(unsigned int i) {
+void MUTELEDS_on(unsigned int i)
+{
     //digitalWriteFast(leds[i], HIGH);
-        ShiftPWM.SetOne(muteLeds[i],5);
-        //ShiftPWM.SetHSV(i,50,255,255);
+    ShiftPWM.SetOne(muteLeds[i], 5);
+    //ShiftPWM.SetHSV(i,50,255,255);
 }
 
-void MUTELEDS_off(unsigned int i) {
-        ShiftPWM.SetOne(muteLeds[i],0);
+void MUTELEDS_off(unsigned int i)
+{
+    ShiftPWM.SetOne(muteLeds[i], 0);
 }
 
-void STEPLEDS_on(unsigned int i) {
+void STEPLEDS_on(unsigned int i)
+{
     //digitalWriteFast(leds[i], HIGH);
-        ShiftPWM.SetOne(stepLeds[i],25);
-        //ShiftPWM.SetHSV(i,50,255,255);
+    ShiftPWM.SetOne(stepLeds[i], 25);
+    //ShiftPWM.SetHSV(i,50,255,255);
 }
 
-void STEPLEDS_off(unsigned int i) {
-        ShiftPWM.SetOne(stepLeds[i],0);
+void STEPLEDS_off(unsigned int i)
+{
+    ShiftPWM.SetOne(stepLeds[i], 0);
+}
+
+void tempoLedOn()
+{
+    digitalWriteFast(tempoled, HIGH);
+    tempoLedOnFlag = true;
+}
+
+void tempoLedOff()
+{
+    if (tempoLedOnFlag) {
+
+        if (tempoLedDelayCounter-- == 0)
+        {
+            digitalWriteFast(tempoled, LOW);
+            tempoLedDelayCounter = tempoLedDelayTime;
+            tempoLedOnFlag = false;
+        }
+    }
 }
